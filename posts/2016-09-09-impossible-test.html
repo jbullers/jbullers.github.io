@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+    <meta charset="utf-8"/>
+    
+    <title>ramblings: To Test... the Untestable Code</title>
+    
+<meta name="keywords" content="Testing,Java,Design">
+
+<meta name="description" content="Maybe you hear it often, or maybe you&#39;ve said it yourself: &lt;em&gt;I would write an automated test for it if it wasn&#39;t impossible to test.&lt;/em&gt; Is it impossible though? Let&#39;s get creative.">
+
+<meta property="og:description" content="Maybe you hear it often, or maybe you&#39;ve said it yourself: &lt;em&gt;I would write an automated test for it if it wasn&#39;t impossible to test.&lt;/em&gt; Is it impossible though? Let&#39;s get creative.">
+
+
+<meta property="og:url" content="http://blogawesome.com/posts/2016-09-09-impossible-test" />
+<meta property="og:title" content="To Test... the Untestable Code" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content="http://blogawesome.com/posts/2016-09-09-impossible-test" />
+<meta name="twitter:title" content="To Test... the Untestable Code" />
+<meta name="twitter:description" content="Maybe you hear it often, or maybe you&#39;ve said it yourself: &lt;em&gt;I would write an automated test for it if it wasn&#39;t impossible to test.&lt;/em&gt; Is it impossible though? Let&#39;s get creative." />
+
+<meta name="twitter:creator" content="" />
+
+    <link rel="canonical" href="http://blogawesome.com/posts/2016-09-09-impossible-test">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="//fonts.googleapis.com/css?family=Rubik:400" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/css/bootstrap.min.css">
+    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.7.0/styles/default.min.css">
+    <link href="/css/screen.css" rel="stylesheet" type="text/css" />
+    <link href="/css/nord.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+
+
+<nav class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">
+              <span class="accent">[& </span>ramblings<span class="accent">]</span>
+            </a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+            <ul class="nav navbar-nav navbar-right">
+                <li ><a href="/">Home</a></li>
+                <li
+                ><a href="/archives">Archives</a></li>
+                
+                <li ><a href="/tags">Tags</a></li>
+                        
+                
+                <li
+                >
+                <a href="/pages/about">About</a>
+                </li>
+                
+            </ul>
+        </div><!--/.nav-collapse -->
+    </div><!--/.container-fluid -->
+</nav>
+
+
+<div class="container">
+    <div class="row">
+            <div id="content">
+                
+<div id="post">
+    <div class="post-header">
+    <div id="post-meta" class="row">
+        <div class="col-lg-6">September 9, 2016</div>
+        
+    </div>
+    <h2>To Test... the Untestable Code</h2>
+</div>
+<div>
+    <ol class="toc"><li><a href="#the-problem">The Problem</a></li><li><a href="#a-first-attempt">A First Attempt</a></li><li><a href="#what-makes-this-test-so-difficult">What Makes This Test So Difficult?</a></li><li><a href="#a-solution">A Solution</a></li><li><a href="#final-remarks">Final Remarks</a></li></ol>
+    <p>Don Quixote reference aside, there are times when we encounter legacy production code that seems to have an uncanny ability to resist our best efforts to get it under test. The result is often very frustrating and demoralizing, and if we give in to those feelings, we'll be falling back to writing manual test cases, or worse, no test cases. Of course, neither of these scenarios is ideal: manual test cases are rarely executed more than once and can quickly get out of date with the reality that is the code base, and no tests are not helpful at all.</p><p>The goal of this article is to walk through an example of a recent problem I had to deal with, and to explore at least one way to address the problem of "untestable" code. Of course, there may be other ways to address even the specific problem we'll examine here. I'll try and highlight alternative implementations I considered while getting the code under test, but these alternatives are by no means exhaustive. I leave it as an exercise for the reader to consider other approaches to solving the problem.</p><p>Now let's go take down a <del>windmill</del> giant!</p><h2 id="the-problem">The Problem</h2><p>The code I was working with comes from a class called the <code>EditingLegendRequestDispatcher</code>. The purpose of this class is to act as a bridge between a <strong>legend</strong> that displays some information to the user and a <strong>legend request handler</strong> that provides static or dynamic content for the legend to display.</p><blockquote><p>Whether or not the design of the dispatcher is even a good idea in the first place would require a <em>much</em> longer article. For example, the only injected dependency is a <code>Legend</code> when we clearly need access to other components, such as a <code>Controller</code>. We'll assume for the purposes of this discussion that there's nothing we can do about that.</p></blockquote><p>Most of the methods in the <code>EditingLegendRequestDispatcher</code> follow a similar pattern:</p><ol><li>Check the editing components of the <code>Legend</code>'s <code>Controller</code> for any matching handlers.</li><li>If no handler is found at level, dispatch a "command" to recursively search for handlers in the hierarchy of <code>Controller</code>s.</li></ol><p>For this article, we'll consider a stripped down version of the <code>EditingLegendRequestDispatcher</code> with only a single (representative) method, <code>getTextContent</code>:</p><pre><code class="java">public class EditingLegendRequestDispatcher extends BaseLegendRequestHandler {
+
+  public EditingLegendRequestDispatcher(Legend legend) {
+    super(legend);
+  }
+
+  public String getTextContent(String key, String format, LegendElement element) {
+    EditingLegendRequestHandler legendRequestHandler =
+          findLegendRequestHandlerAtLevel(Mode.TEXTUAL, key);
+    if (legendRequestHandler != null) {
+      return legendRequestHandler.getTextContent(key, format, element);
+    }
+
+    DispatchEditingLegendTextContentRequestCommand command =
+          new DispatchEditingLegendTextContentRequestCommand(this, key, format, element);
+    dispatchLegendRequest(command);
+
+    return command.getTextContent();
+  }
+
+  private void dispatchLegendRequest(PACCommand command) {
+    try {
+      getLegend().getView().getController().traverseAllChildAgents(command);
+    } catch (NjException e) {
+      // Handle error
+    }
+  }
+}
+</code></pre><p>Let's consider how we would approach testing this method.</p><h2 id="a-first-attempt">A First Attempt</h2><p>We'll start with what should be a simple test: assuming that we don't find a handler at level, the dispatched request should find some text content. Let's set up our test and then consider what dependencies we need to mock out in order to isolate our subject under test.</p><pre><code class="java">@Test
+public void shouldDispatchTextContentRequestToHandler() {
+  EditingLegendRequestDispatcher dispatcher = new EditingLegendRequestDispatcher(mock(Legend.class));
+
+  String textContent = dispatcher.getTextContent(key, null, null);
+
+  assertThat(textContent, is(equalTo(expectedTextContent)));
+}
+</code></pre><p>If we run this test, the <code>dispatchLegendRequest</code> call will explode; we've got a "train wreck" series of method calls to mock if we want any hope of this test working as expected. So let's start mocking that chain:</p><pre><code class="java">@Mock Legend legend;
+
+@Before
+public void setUpMockLegend() {
+  Controller controller = mock(Controller.class);
+  doNothing().when(controller).traverseAllChildAgents(any(PACCommand.class));
+
+  View view = mock(View.class);
+  when(view.getController()).thenReturn(controller);
+
+  when(legend.getView()).thenReturn(view);
+}
+
+@Test
+public void shouldDispatchTextContentRequestToHandler() {
+  EditingLegendRequestDispatcher dispatcher = new EditingLegendRequestDispatcher(legend);
+
+  String textContent = dispatcher.getTextContent(key, null, null);
+
+  assertThat(textContent, is(equalTo(expectedTextContent)));
+}
+</code></pre><p>Phew! Okay, now that the chain is all mocked out, we can actually run this test. Or can we? What does <code>DispatchEditingLegendTextContentRequestCommand</code> do with its reference to our dispatcher? I won't bother diving in to the code, but suffice it to say the command does some reaching of its own. This means we've got a lot more mocking to do if we ever want to get this test running, but should we really be doing that? Consider the implication of setting up our mocks to work correctly with the calls in <code>DispatchEditingLegendTextContentRequestCommand</code>: we'd be setting up our mocks for testing the <code>EditingLegendRequestDispatcher</code> using <em>implementation details of an implementation detail</em>. The resulting test would not only be very complicated to understand, it would also be <em>extremely</em> brittle. Something is clearly wrong here, so let's stop and take a step back.</p><h2 id="what-makes-this-test-so-difficult">What Makes This Test So Difficult?</h2><p>We've seen in the previous section that our test, which seemed on the surface to be rather straightforward, is in fact nearly impossible to write given the current implementation. This is because the <strong>dependencies</strong> of our <code>EditingLegendRequestDispatcher</code> are not explicit. The problem manifests itself in two places:</p><ol><li>The implementation of <code>getTextContent</code> requires access to a <code>Controller</code>, which it can only obtain through a "train wreck" chain of calls starting from a <code>Legend</code>.</li><li>The <code>DispatchEditingLegendTextContentRequestCommand</code> is used to search for the text content. This command is a <strong>collaborator</strong> of our object (and therefore a dependency), but it is hidden away as an implementation detail. This makes mocking it extremely difficult without special tools.</li></ol><p>We could get rid of both of these problems by making the dependencies explicit. The resulting code would then look something like this:</p><pre><code class="java">@FunctionalInterface
+public interface CommandSupplier {
+  DispatchEditingLegendTextContentRequestCommand createCommand(
+        EditingLegendRequestDispatcher dispatcher, String key,
+        String format, LegendElement element);
+}
+
+public class EditingLegendRequestDispatcher extends BaseLegendRequestHandler {
+
+  private final Controller controller;
+  private final CommandSupplier supplier;
+
+  public EditingLegendRequestDispatcher(
+        Legend legend, Controller controller, CommandSupplier supplier) {
+    super(legend);
+    this.controller = controller;
+    this.supplier = supplier;
+  }
+
+  public String getTextContent(String key, String format, LegendElement element) {
+    EditingLegendRequestHandler legendRequestHandler =
+          findLegendRequestHandlerAtLevel(Mode.TEXTUAL, key);
+    if (legendRequestHandler != null) {
+      return legendRequestHandler.getTextContent(key, format, element);
+    }
+
+    DispatchEditingLegendTextContentRequestCommand command =
+          supplier.createCommand(this, key, format, element);
+    dispatchLegendRequest(command);
+
+    return command.getTextContent();
+  }
+
+  private void dispatchLegendRequest(PACCommand command) {
+    try {
+      controller.traverseAllChildAgents(command);
+    } catch (NjException e) {
+      // Handle error
+    }
+  }
+}
+</code></pre><p>The test is now as straightforward as we imagined it would be:</p><pre><code class="java">@Mock DispatchEditingLegendTextContentRequestCommand mockCommand;
+
+@Before
+public void setUpMockCommand() {
+  when(mockCommand.getTextContent()).thenReturn(expectedTextContent);
+}
+
+@Test
+public void shouldDispatchTextContentRequestToHandler() {
+  EditingLegendRequestDispatcher dispatcher =
+        new EditingLegendRequestDispatcher(
+              mock(Controller.class),
+              (dispatcher, key, format, element) -&gt; mockCommand
+        );
+
+  String textContent = dispatcher.getTextContent(key, null, null);
+
+  assertThat(textContent, is(equalTo(expectedTextContent)));
+}
+</code></pre><p>Now that we know what would be ideal, how can we approximate this given our current constraints?</p><h2 id="a-solution">A Solution</h2><p>Since we're working with a larger system and plugging our dispatcher in to a framework that isn't under our direct control, we can't update the constructor as we did above. While the solution we explored is not applicable, the idea still is: we want to make minimal (safe) changes to make the seams between our object and its dependencies explicit. We already have access to the <code>Controller</code> and can mock the call chain from the <code>Legend</code> easily enough, so we'll ignore that for now and focus on the command.</p><p>Let's pull the creation of the command out of <code>getTextContent</code> like we did above, but leave the constructor alone. Since we can't inject the supplier, we'll just initialize the field directly.</p><pre><code class="java">@FunctionalInterface
+public interface CommandSupplier {
+  DispatchEditingLegendTextContentRequestCommand createCommand(
+        EditingLegendRequestDispatcher dispatcher, String key,
+        String format, LegendElement element);
+}
+
+public class EditingLegendRequestDispatcher extends BaseLegendRequestHandler {
+
+  private CommandSupplier supplier = (dispatcher, key, format, element) -&gt;
+        new DispatchEditingLegendTextContentRequestCommand(dispatcher, key, format, element);
+
+  public EditingLegendRequestDispatcher(Legend legend) {
+    super(legend);
+  }
+
+  public String getTextContent(String key, String format, LegendElement element) {
+    EditingLegendRequestHandler legendRequestHandler =
+          findLegendRequestHandlerAtLevel(Mode.TEXTUAL, key);
+    if (legendRequestHandler != null) {
+      return legendRequestHandler.getTextContent(key, format, element);
+    }
+
+    DispatchEditingLegendTextContentRequestCommand command =
+          supplier.createCommand(this, key, format, element);
+    dispatchLegendRequest(command);
+
+    return command.getTextContent();
+  }
+
+  private void dispatchLegendRequest(PACCommand command) {
+    try {
+      controller.traverseAllChildAgents(command);
+    } catch (NjException e) {
+      // Handle error
+    }
+  }
+}
+</code></pre><p>This may seem a little silly, but consider what this small change has given us: the <code>getTextContent</code> method no longer has any collaborators that it <em>directly creates</em>. Now that the seam between our dispatcher and the command is explicit, we can inject our mock.</p><p>Unfortunately, this is where things start to get a little ugly. We have more or less two choices at this point: we can use reflection in our test code, or we can provide a package-visible setter for our test code to use. Personally, I prefer the reflection approach since I feel that it makes the smelliness a little more obvious; the setter would have to be named something silly like <code>setCommandSupplierForTestPurposes</code> in order to have the same effect. The reflection approach also has the benefit of confining the testing "trick" to the test code, as opposed to adding a "for testing only" method to the production code.</p><p>Taking the reflection approach, our test would now look something like this:</p><pre><code class="java">@Mock Legend legend;
+@Mock DispatchEditingLegendTextContentRequestCommand mockCommand;
+
+@Before
+public void setUpMockLegend() {
+  Controller controller = mock(Controller.class);
+  doNothing().when(controller).traverseAllChildAgents(any(PACCommand.class));
+
+  View view = mock(View.class);
+  when(view.getController()).thenReturn(controller);
+
+  when(legend.getView()).thenReturn(view);
+}
+
+@Before
+public void setUpMockCommand() {
+  when(mockCommand.getTextContent()).thenReturn(expectedTextContent);
+}
+
+@Test
+public void shouldDispatchTextContentRequestToHandler() {
+  EditingLegendRequestDispatcher dispatcher = new EditingLegendRequestDispatcher(legend);
+  setInternalState(dispatcher, "supplier", (dispatcher, key, format, element) -&gt; mockCommand);
+
+  String textContent = dispatcher.getTextContent(key, null, null);
+
+  assertThat(textContent, is(equalTo(expectedTextContent)));
+}
+</code></pre><h2 id="final-remarks">Final Remarks</h2><p>I hope to have demonstrated through the above example that, while testing legacy code can be very difficult sometimes, it is not impossible. A good first step to getting "untestable" code under test is to imagine what you would change if you had full control over the class. What are the dependencies you wish had been injected? What collaborators are being "newed up" as an implementation detail? Answering these and related questions can help you identify what changes you need to make to find the seams. Once you've found those seams, you need to get creative and find ways to exploit them.</p><p>It's also worth noting that while reflection can get a little messy and can be brittle (especially when dealing with internal fields by name!), it's not the worst approach in test code: it makes explicit the fact that the test code is forced to jump through hoops due to poor design, and it avoids polluting production code with "test-only" hooks, or methods/fields that have weaker access privilege than they should. Remember: your tests can and should help you <em>improve</em> your designs. You shouldn't be making design concessions just to make your code testable.</p>
+</div>
+
+<div id="post-tags">
+    <b>Tags: </b>
+    
+    <a href="/tags/Testing">Testing</a>
+    
+    <a href="/tags/Java">Java</a>
+    
+</div>
+
+
+    <div id="prev-next">
+        
+        
+        <a class="right" href="/posts/2016-05-25-encapsulation">Encapsulation and Information Hiding &raquo;</a>
+        
+    </div>
+
+    
+
+
+</div>
+
+            </div>
+    </div>
+    <footer>Copyright &copy; 2023 Jason Bullers
+        <p style="text-align: center;">Powered by <a href="http://cryogenweb.org">Cryogen</a></p></footer>
+</div>
+<script src="//code.jquery.com/jquery-1.11.0.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
+<script src="/js/highlight.min.js" type="application/javascript"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+</body>
+</html>

@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+    <meta charset="utf-8"/>
+    
+    <title>ramblings: Encapsulation and Information Hiding</title>
+    
+<meta name="keywords" content="Testing,Java,Design">
+
+<meta name="description" content="What does it mean to have &quot;strong encapsulation&quot; and to &quot;hide information&quot;? Are getters and setters enough? An exploration of designing classes that reveal as little as possible.">
+
+<meta property="og:description" content="What does it mean to have &quot;strong encapsulation&quot; and to &quot;hide information&quot;? Are getters and setters enough? An exploration of designing classes that reveal as little as possible.">
+
+
+<meta property="og:url" content="http://blogawesome.com/posts/2016-05-25-encapsulation" />
+<meta property="og:title" content="Encapsulation and Information Hiding" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content="http://blogawesome.com/posts/2016-05-25-encapsulation" />
+<meta name="twitter:title" content="Encapsulation and Information Hiding" />
+<meta name="twitter:description" content="What does it mean to have &quot;strong encapsulation&quot; and to &quot;hide information&quot;? Are getters and setters enough? An exploration of designing classes that reveal as little as possible." />
+
+<meta name="twitter:creator" content="" />
+
+    <link rel="canonical" href="http://blogawesome.com/posts/2016-05-25-encapsulation">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="//fonts.googleapis.com/css?family=Rubik:400" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/css/bootstrap.min.css">
+    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.7.0/styles/default.min.css">
+    <link href="/css/screen.css" rel="stylesheet" type="text/css" />
+    <link href="/css/nord.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+
+
+<nav class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">
+              <span class="accent">[& </span>ramblings<span class="accent">]</span>
+            </a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+            <ul class="nav navbar-nav navbar-right">
+                <li ><a href="/">Home</a></li>
+                <li
+                ><a href="/archives">Archives</a></li>
+                
+                <li ><a href="/tags">Tags</a></li>
+                        
+                
+                <li
+                >
+                <a href="/pages/about">About</a>
+                </li>
+                
+            </ul>
+        </div><!--/.nav-collapse -->
+    </div><!--/.container-fluid -->
+</nav>
+
+
+<div class="container">
+    <div class="row">
+            <div id="content">
+                
+<div id="post">
+    <div class="post-header">
+    <div id="post-meta" class="row">
+        <div class="col-lg-6">May 25, 2016</div>
+        
+    </div>
+    <h2>Encapsulation and Information Hiding</h2>
+</div>
+<div>
+    <ol class="toc"><li><a href="#what-is-encapsulation">What is Encapsulation?</a></li><li><a href="#what-is-information-hiding">What is Information Hiding?</a></li><li><a href="#are-private-fields-and-getters-and-setters-enough">Are Private Fields and Getters and Setters Enough?</a></li><li><a href="#is-encapsulation-only-about-classes">Is Encapsulation Only About Classes?</a></li><li><a href="#encapsulation-and-inheritance">Encapsulation and Inheritance</a></li><ol><li><a href="#how-can-inheritance-break-encapsulation">How Can Inheritance Break Encapsulation?</a></li></ol><li><a href="#final-remarks">Final Remarks</a></li></ol>
+    <h2 id="what-is-encapsulation">What is Encapsulation?</h2><p>Strictly speaking, <strong>encapsulation</strong> is the mechanism whereby <em>data</em> and <em>behaviour</em> are bundled together as one unit. This mechanism is provided in many object-oriented languages by the <code>class</code> construct. For example, consider the following two code snippets. In the first, we model points using simple arrays for the data structure and have a separate function that operates on those data structures:</p><pre><code class="java">int[] pointA = {0, 0};
+int[] pointB = {3, 4};
+
+static double distanceBetween(int[] a, int[] b) {
+  return hypot(b[0] - a[0], b[1] - a.[1]);
+}
+
+double distance = distanceBetween(pointA, pointB);
+</code></pre><p>In the second, we model a data structure for <code>Point</code> objects that also bundles behaviour with the data:</p><pre><code class="java">class Point {
+  final int x;
+  final int y;
+
+  Point(int x, int y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  double distanceTo(Point other) {
+    return hypot(other.x - this.x, other.y - this.y);
+  }
+}
+
+double distance = new Point(0, 0).distanceTo(new Point(3, 4));
+</code></pre><p>The former is not encapsulated by the above definition, while the latter is. Notice that in neither case do we take advantage of access modifiers, such as <code>private</code>, in order to abstract away details. This is the domain of <em>information hiding</em>.</p><h2 id="what-is-information-hiding">What is Information Hiding?</h2><p><strong>Information hiding</strong> is the practice of building abstractions. Many object-oriented languages provide access modifiers as a way to implement information hiding. The value of this technique is in setting up a contract between a piece of code and the user of that code. This concept is easily summed up in pithy phrases we've all heard before, such as "code to interfaces, not implementations".</p><p>For the purposes of this article, I'm not going to continue to make a distinction between <em>encapsulation</em> and <em>information hiding</em>. There's plenty of debate out there on the fine line between the two, but outside of pure academic rigour, I don't feel that the distinction is particularly meaningful; encapsulation without information hiding doesn't do much to aid in good object-oriented design.</p><h2 id="are-private-fields-and-getters-and-setters-enough">Are Private Fields and Getters and Setters Enough?</h2><p>So if we can use access modifiers to hide information, does that mean that the following is a properly encapsulated <code>Point</code> class?</p><pre><code class="java">public class Point {
+  private int x;
+  private int y;
+
+  public Point(int x, int y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  public int getX() { return x; }
+
+  public int getY() { return y; }
+
+  public double distanceTo(Point other) {
+    return hypot(
+          other.getX() - this.getX(),
+          other.getY() - this.getY()
+    );
+  }
+}
+</code></pre><p>Consider instead this implementation:</p><pre><code class="java">public class Point {
+  public final int x;
+  public final int y;
+
+  public Point(int x, int y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  public double distanceTo(Point other) {
+    return hypot(other.x - this.x, other.y - this.y);
+  }
+}
+</code></pre><p>Aside from violating the uniform access principle, there is really no difference between these two implementations as far as encapsulation goes. As a client programmer of the <code>Point</code> class, it is perfectly obvious what the implementation of the class is: a <code>Point</code> has two integer fields named <code>x</code> and <code>y</code>.</p><blockquote><p>The uniform access principle states that all services offered by a module should not give away any details about whether they area implemented via storage or computation. In the case of Java, it is clear that this principle is violated when working directly with fields. Since Java does not have first-class property support, code such as <code>point.x</code> or <code>point.y = 5</code> can only be doing one thing: retrieving or modifying stored values.</p></blockquote><blockquote><p>In a language such as Python or Groovy that <em>does</em> have first-class property support, the distinction between fields and calculated values melts away: <code>point.x</code> may just as well be a calculated value as it is a stored value. It can even change between one or the other over the life time of the class with no impact on clients of that class.</p></blockquote><p>If <code>private</code> fields and <code>public</code> getters does not make a class encapsulated, what does? Providing an abstraction to the outside world does. Continuing with our <code>Point</code> example, we could define a more abstract version of a <code>Point</code> that does not give away its internals like so:</p><pre><code class="java">public class Point {
+  private double x;
+  private double y;
+
+  public static Point newCartesianPoint(double x, double y) {
+    return new Point(x, y);
+  }
+
+  public static Point newPolarPoint(double r, double theta) {
+    return new Point(r * cos(theta), r * sin(theta));
+  }
+
+  private Point(double x, double y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  public double getX() { return x; }
+
+  public double getY() { return y; }
+
+  public double getR() { return hypot(x, y); }
+
+  public double getTheta() { return atan2(y, x); }
+
+  public double distanceTo(Point other) {
+    return hypot(
+          other.getX() - this.getX(),
+          other.getY() - this.getY()
+    );
+  }
+}
+</code></pre><p>Here, we are free to change the implementation to store the components of the point in polar coordinates if we so chose (or some other form). From the client programmer's perspective, there would be absolutely no difference in terms of how they would use this class; they could still create <code>Point</code> objects in one of two ways, and could still extract the Cartesian and polar coordinates as desired.</p><p>This example is a bit contrived, especially since here we are dealing with a value rather than an object and therefore have less information to hide (see <a href="objects-vs-values-api">Objects Versus Values And API Design</a>), but hopefully illustrates the basic idea. Let's now consider another example, where we have a <code>Library</code> that contains <code>Book</code>s:</p><pre><code class="java">public class Library {
+  private Map&lt;Author, Collection&lt;Book&gt;&gt; authorToBooks;
+  private Map&lt;String, Book&gt; titleToBook;
+
+  public Library add(Book book) {
+    addBookToAuthorLookup(book);
+    addBookToTitleLookup(book);
+    return this;
+  }
+
+  private void addBookToAuthorLookup(Book book) {
+    Collection&lt;Book&gt; booksByAuthor = authorToBooks.get(book.author());
+    if (booksByAuthor == null) {
+      authorToBooks.put(book.author(), booksByAuthor = new ArrayList&lt;&gt;());
+    }
+    booksByAuthor.add(book);
+  }
+
+  private void addBookToTitleLookup(Book book) {
+    titleToBook.put(book.title(), book);
+  }
+
+  public Collection&lt;Book&gt; findAllBooksBy(Author author) {
+    return new ArrayList&lt;&gt;(authorToBooks.get(author));
+  }
+
+  public Book findBookTitled(String title) {
+    return titleToBook.get(title);
+  }
+}
+</code></pre><p>For simplicity, we assume one <code>Author</code> to a <code>Book</code>, which of course is not always the case in the real world. We also assume that all <code>Book</code>s have unique titles; in a real system, we'd probably want to key on ISBNs. The point here is that the implementation involves several maps to improve the lookup performance (imagine we have profiled our system and discovered that search operations vastly outweigh insertions), but all of this is hidden from the client code, which knows only that it can insert <code>Book</code>s into the <code>Library</code> and search for them by <code>Author</code> or title.</p><h2 id="is-encapsulation-only-about-classes">Is Encapsulation Only About Classes?</h2><p>As I mentioned earlier, information hiding is made available through access modifiers. Consequently, this is not limited only to classes, but extends to other forms of code organization that support access modifiers, such as packages or modules. For example, the following classes living in the same package are still encapsulated:</p><pre><code class="java">public interface Point {
+  double getX();
+  double getY();
+  double getR();
+  double getTheta();
+
+  default double distanceTo(Point other) {
+    return hypot(
+          other.getX() - this.getX(),
+          other.getY() - this.getY()
+    );
+  }
+
+  static Point newCartesianPoint(double x, double y) {
+    return new CartesianPoint(x, y);
+  }
+
+  static Point newPolarPoint(double r, double theta) {
+    return new PolarPoint(r, theta);
+  }
+}
+
+class CartesianPoint implements Point {
+  private final double x;
+  private final double y;
+
+  CartesianPoint(double x, double y) {
+    this.x = x;
+    this.y = y;
+  }
+
+  @Override
+  public double getX() { return x; }
+
+  @Override
+  public double getY() { return y; }
+
+  @Override
+  public double getR() { return hypot(x, y); }
+
+  @Override
+  public double getTheta() { return atan2(y, x); }
+}
+
+class PolarPoint implements Point {
+  private final double r;
+  private final double theta;
+
+  PolarPoint(double r, double theta) {
+    this.r = r;
+    this.theta = theta;
+  }
+
+  @Override
+  public double getX() { return r * cos(theta); }
+
+  @Override
+  public double getY() { return r * sin(theta); }
+
+  @Override
+  public double getR() { return r; }
+
+  @Override
+  public double getTheta() { return theta; }
+}
+</code></pre><p>From the outside, a client programmer has no idea what the implementation of <code>Point</code> might be, or even whether or not there may be multiple classes that are used to implement <code>Point</code>. As we saw with our earlier implementation, we simply chose Cartesian coordinates for storing our <code>Point</code> fields, while here we opted to use two concrete implementations instead.</p><p>What is important to recognize here is that good encapsulation is about <em>insulating the client code from the details</em>. The scope of those details are unimportant, provided they are hidden behind a well-defined interface that does nothing to give them away. This promotes very low coupling between parts of the system and allows for changes in implementation that will not break calling code.</p><h2 id="encapsulation-and-inheritance">Encapsulation and Inheritance</h2><p>What happens now when we start modeling class hierarchies via inheritance? Recall that inheritance can take on several different flavours: <em>inheritance of state</em>, <em>inheritance of type</em>, and <em>inheritance of implementation</em> (<a href="inheritance-delegation">Inheritance and Delegation</a>). Of these flavours, it is <strong>inheritance of state</strong>, and, to a lesser extent, <strong>inheritance of implementation</strong>, that can get us in to trouble with regards to good encapsulation.</p><h3 id="how-can-inheritance-break-encapsulation">How Can Inheritance Break Encapsulation?</h3><p>When we allow for the inheritance of state, we are necessarily coupling our superclass with all potential subclasses. In this situation, we are said to have <em>broken encapsulation</em> because we have revealed too much information about our superclass' implementation. Consider the following inheritance hierarchy:</p><pre><code class="java">class Employee {
+  protected String firstName;
+  protected String lastName;
+  protected BigDecimal hourlyRate;
+
+  Employee(String firstName, String lastName, BigDecimal hourlyRate) {
+    this.firstName = firstName;
+    this.lastName = lastName;
+    this.hourlyRate = hourlyRate;
+  }
+
+  BigDecimal calculatePayForHoursWorked(BigDecimal hoursWorked) {
+    return hourlyRate.multiply(hoursWorked);
+  }
+
+  @Override
+  public String toString() {
+    return format("%s, %s", lastName, firstName);
+  }
+}
+
+class Manager extends Employee {
+  protected Collection&lt;Employee&gt; managedEmployees;
+
+  Manager(String firstName, String lastName, BigDecimal hourlyRate) {
+    super(firstName, lastName, hourlyRate);
+    managedEmployees = new ArrayList&lt;&gt;();
+  }
+
+  Manager addEmployee(Employee employee) {
+    managedEmployees.add(employee);
+    return this;
+  }
+
+  BigDecimal calculatePayForHoursWorked(BigDecimal hoursWorked) {
+    return hourlyRate.multiply(hoursWorked).add(managerBonus());
+  }
+
+  private BigDecimal managerBonus() {
+    return new BigDecimal(managedEmployees.size() * 200);
+  }
+
+  @Override
+  public String toString() {
+    return format(
+          "%s, %s: Manages: %s",
+          lastName, firstName,
+          managedEmployees
+    );
+  }
+}
+</code></pre><p>At first glance, this may seem like an acceptable implementation: it minimizes boilerplate and provides subclasses access to important fields. However, consider what may happen if any of those details changes in <code>Employee</code>. For example, imagine we decided to rewrite <code>Employee</code> as follows:</p><pre><code class="java">class Employee {
+  protected Name name;
+  protected BigDecimal hourlyRate;
+
+  Employee(String firstName, String lastName, BigDecimal hourlyRate) {
+    name = new Name(firstName, lastName);
+    this.hourlyRate = hourlyRate;
+  }
+
+  BigDecimal calculatePayForHoursWorked(BigDecimal hoursWorked) {
+    return hourlyRate.multiply(hoursWorked);
+  }
+
+  @Override
+  public String toString() {
+    return name.toString();
+  }
+}
+</code></pre><p>Here, the public API is exactly the same, and yet the <code>Manager</code> class will no longer compile. Specifically, the <code>toString()</code> method is broken because the <code>protected</code> fields <code>lastName</code> and <code>firstName</code> no longer exist. Changes to the superclass have bled through to the subclass and broken its implementation because <code>Employee</code> was not properly encapsulated.</p><p>We can do better if we avoid <em>inheritance of state</em>, but the problem is still a complex one: how can we design a superclass that exposes the <em>right information</em> to its subclasses at the <em>right level of abstraction</em>? The answer is not always obvious. In the case of our <code>Employee</code> and <code>Manager</code> example above, we can define <code>protected</code> methods and treat those as if they have the same permanence as a <code>public</code> API. This at least insulates us from potential changes in state made to the superclass.</p><pre><code class="java">class Employee {
+  private String firstName;
+  private String lastName;
+  private BigDecimal hourlyRate;
+
+  Employee(String firstName, String lastName, BigDecimal hourlyRate) {
+    this.firstName = firstName;
+    this.lastName = lastName;
+    this.hourlyRate = hourlyRate;
+  }
+
+  BigDecimal calculatePayForHoursWorked(BigDecimal hoursWorked) {
+    return hourlyRate.multiply(hoursWorked);
+  }
+
+  protected String lastName() { return lastName; }
+
+  protected String firstName() { return firstName; }
+
+  protected BigDecimal hourlyRate() { return hourlyRate; }
+
+  @Override
+  public String toString() {
+    return name.toString();
+  }
+}
+
+class Manager extends Employee {
+  protected Collection&lt;Employee&gt; managedEmployees;
+
+  Manager(String firstName, String lastName, BigDecimal hourlyRate) {
+    super(firstName, lastName, hourlyRate);
+    managedEmployees = new ArrayList&lt;&gt;();
+  }
+
+  Manager addEmployee(Employee employee) {
+    managedEmployees.add(employee);
+    return this;
+  }
+
+  BigDecimal calculatePayForHoursWorked(BigDecimal hoursWorked) {
+    return hourlyRate().multiply(hoursWorked).add(managerBonus());
+  }
+
+  private BigDecimal managerBonus() {
+    return new BigDecimal(managedEmployees.size() * 200);
+  }
+
+  @Override
+  public String toString() {
+    return format(
+          "%s, %s: Manages: %s",
+          lastName(), firstName(),
+          managedEmployees
+    );
+  }
+}
+</code></pre><p>Now, if we make the same implementation change to <code>Employee</code>, the <code>Manager</code> subclass still compiles and works as expected:</p><pre><code class="java">class Employee {
+  private Name name;
+  private BigDecimal hourlyRate;
+
+  Employee(String firstName, String lastName, BigDecimal hourlyRate) {
+    name = new Name(firstName, lastName);
+    this.hourlyRate = hourlyRate;
+  }
+
+  BigDecimal calculatePayForHoursWorked(BigDecimal hoursWorked) {
+    return hourlyRate.multiply(hoursWorked);
+  }
+
+  protected String lastName() { return name.last(); }
+
+  protected String firstName() { return name.first(); }
+
+  protected BigDecimal hourlyRate() { return hourlyRate; }
+
+  @Override
+  public String toString() {
+    return format("%s, %s", lastName(), firstName());
+  }
+}
+</code></pre><blockquote><p>It is worth noting once again that languages such as Python and Groovy help solve this problem with first-class property support: changing from field access to a calculation is transparent to callers. For languages without this kind of support, such as Java, it is up to the author of the class to think ahead and encapsulate properly.</p></blockquote><h2 id="final-remarks">Final Remarks</h2><p>Encapsulation and, of course, information hiding are invaluable tools in object-oriented design. They make it possible for us to create modular systems that are loosely coupled, which leads to a whole host of benefits from testability to maintenance. However, as we have seen, it is not always obvious where or how to properly encapsulate details, especially when inheritance hierarchies are involved. Special care must be taken to expose only what is absolutely necessary for client programmers to know. Once an API has been published, whether it be <code>public</code> or <code>protected</code>, any changes to it can have far reaching consequences. Prefer APIs that steer clear of implementation details and favour useful abstractions instead.</p>
+</div>
+
+<div id="post-tags">
+    <b>Tags: </b>
+    
+    <a href="/tags/Design">Design</a>
+    
+    <a href="/tags/Java">Java</a>
+    
+</div>
+
+
+    <div id="prev-next">
+        
+        <a href="/posts/2016-09-09-impossible-test">&laquo; To Test... the Untestable Code</a>
+        
+        
+        <a class="right" href="/posts/2016-03-15-intersection-union-types">Intersection and Union Types &raquo;</a>
+        
+    </div>
+
+    
+
+
+</div>
+
+            </div>
+    </div>
+    <footer>Copyright &copy; 2023 Jason Bullers
+        <p style="text-align: center;">Powered by <a href="http://cryogenweb.org">Cryogen</a></p></footer>
+</div>
+<script src="//code.jquery.com/jquery-1.11.0.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
+<script src="/js/highlight.min.js" type="application/javascript"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+</body>
+</html>

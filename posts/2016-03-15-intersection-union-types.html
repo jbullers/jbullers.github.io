@@ -1,0 +1,396 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+    <meta charset="utf-8"/>
+    
+    <title>ramblings: Intersection and Union Types</title>
+    
+<meta name="keywords" content="Testing,Java,Design">
+
+<meta name="description" content="Buckle up for a trip down the rabbit hole! What are &lt;em&gt;intersection types&lt;/em&gt; and &lt;em&gt;union types&lt;/em&gt;, can we use them in Java, and why would we want to?">
+
+<meta property="og:description" content="Buckle up for a trip down the rabbit hole! What are &lt;em&gt;intersection types&lt;/em&gt; and &lt;em&gt;union types&lt;/em&gt;, can we use them in Java, and why would we want to?">
+
+
+<meta property="og:url" content="http://blogawesome.com/posts/2016-03-15-intersection-union-types" />
+<meta property="og:title" content="Intersection and Union Types" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content="http://blogawesome.com/posts/2016-03-15-intersection-union-types" />
+<meta name="twitter:title" content="Intersection and Union Types" />
+<meta name="twitter:description" content="Buckle up for a trip down the rabbit hole! What are &lt;em&gt;intersection types&lt;/em&gt; and &lt;em&gt;union types&lt;/em&gt;, can we use them in Java, and why would we want to?" />
+
+<meta name="twitter:creator" content="" />
+
+    <link rel="canonical" href="http://blogawesome.com/posts/2016-03-15-intersection-union-types">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="//fonts.googleapis.com/css?family=Rubik:400" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/css/bootstrap.min.css">
+    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.7.0/styles/default.min.css">
+    <link href="/css/screen.css" rel="stylesheet" type="text/css" />
+    <link href="/css/nord.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+
+
+<nav class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">
+              <span class="accent">[& </span>ramblings<span class="accent">]</span>
+            </a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+            <ul class="nav navbar-nav navbar-right">
+                <li ><a href="/">Home</a></li>
+                <li
+                ><a href="/archives">Archives</a></li>
+                
+                <li ><a href="/tags">Tags</a></li>
+                        
+                
+                <li
+                >
+                <a href="/pages/about">About</a>
+                </li>
+                
+            </ul>
+        </div><!--/.nav-collapse -->
+    </div><!--/.container-fluid -->
+</nav>
+
+
+<div class="container">
+    <div class="row">
+            <div id="content">
+                
+<div id="post">
+    <div class="post-header">
+    <div id="post-meta" class="row">
+        <div class="col-lg-6">March 15, 2016</div>
+        
+    </div>
+    <h2>Intersection and Union Types</h2>
+</div>
+<div>
+    <ol class="toc"><li><a href="#intersection-types">Intersection Types</a></li><ol><li><a href="#what-is-an-intersection-type">What is an Intersection Type?</a></li><li><a href="#interface-segregation">Interface Segregation</a></li></ol><li><a href="#union-types">Union Types</a></li><ol><li><a href="#what-is-a-union-type">What is a Union Type?</a></li><li><a href="#modeling-the-absence-of-a-value">Modeling the Absence of a Value</a></li><li><a href="#a-context-for-computation">A Context for Computation</a></li><li><a href="#exceptional-situations-and-union-types">Exceptional Situations and Union Types</a></li></ol><li><a href="#final-remarks">Final Remarks</a></li></ol>
+    <p>For this article, we're going to work through a bit of a thought experiment, at least as far as the Java language is concerned. The aim is to explore what is available to us through the type system, specifically with regards to <em>intersection types</em> and <em>union types</em>, and to see how building software using these types can change the way we look at certain abstractions or language constructs. Down the rabbit hole we go!</p><h2 id="intersection-types">Intersection Types</h2><h3 id="what-is-an-intersection-type">What is an Intersection Type?</h3><p>An <strong>intersection type</strong> is a type obtained by combining two or more types. A type, <code>T</code>, is said to be <em>assignable</em> to an intersection type if <code>T</code> is assignable to <em>all</em> the types in that intersection. To make this clear, consider the following types:</p><pre><code class="java">interface Eat {
+  void eat();
+}
+
+interface Fly {
+  void fly();
+}
+
+class Pigeon implements Eat, Fly {
+
+  @Override
+  public void eat() {
+    System.out.println("Eating hotdog crumbs off the street.");
+  }
+
+  @Override
+  public void fly() {
+    System.out.println("Flying at unsuspecting pedestrians.");
+  }
+}
+</code></pre><p>Here we can say that the type <code>Pigeon</code> is assignable to the intersection type <code>Eat &amp; Fly</code> because it implements both of those interfaces. <code>Pigeon</code> is also of course assignable to the individual types <code>Eat</code> and <code>Fly</code>. Assuming all the following code was valid Java, that means all these statements are true:</p><pre><code class="java">Eat thingThatEats = new Pigeon();
+Fly thingThatFlies = new Pigeon();
+Eat&amp;Fly thingThatEatsAndFlies = new Pigeon();
+</code></pre><p>This makes sense conceptually, but can we actually represent this concept in Java? Our options are limited by the type system, but there is one place where we <em>can</em> define intersection types: generic type parameters.</p><pre><code class="java">&lt;T extends Eat &amp; Fly&gt; void doSomethingWithThingThatEatsAndFlies(T thing) {
+  thing.eat();
+  thing.fly();
+}
+</code></pre><p>Now that we know <em>how</em> we can define such a type, let's explore <em>why</em> we would want to.</p><h3 id="interface-segregation">Interface Segregation</h3><p><strong>Interface segregation</strong> is the <strong>I</strong> of the SOLID principles. Put simply, the principle encourages us to prefer many small interfaces over large ones. The goal is to promote high cohesion and low coupling within the system: high cohesion because small interfaces should be very specialized, and low coupling because client code can depend only on the specific (and narrow) interfaces it requires to function.</p><blockquote><p>SOLID is a mnemonic acronym for some of the most important principles of object-oriented software design. The principles are: Single Responsibility, Open-Closed, Liskov Substitution, Interface Segregation, and Dependency Inversion.</p></blockquote><p>Keeping the interface segregation principle in mind, we want to create types that are as specialized as possible in order to avoid bloated dependencies. Intersection types can help us with this by allowing us to specify <em>exactly</em> what we require, and nothing more. Consider, for example, how we might implement the example above without intersection types:</p><pre><code class="java">interface Eat {
+  void eat();
+}
+
+interface Fly {
+  void fly();
+}
+
+interface Bird extends Eat, Fly {}
+
+class Pigeon implements Bird {
+
+  @Override
+  public void eat() {
+    System.out.println("Eating hotdog crumbs off the street.");
+  }
+
+  @Override
+  public void fly() {
+    System.out.println("Flying at unsuspecting pedestrians.");
+  }
+}
+
+void doSomethingWithThingThatEatsAndFlies(Bird bird) {
+  bird.eat();
+  bird.fly();
+}
+</code></pre><p>Here we manage to get the same behaviour, but at the expense of introducing a new type to our hierarchy: <code>Bird</code>. This is troublesome for two reasons. First, if <code>Bird</code> defines additional behaviours beyond the ones it inherits from <code>Eat</code> and <code>Fly</code>, our method <code>doSomethingWithThingThatEatsAndFlies()</code> has the opportunity to make use of those behaviours. We have opened the door wider for ourselves than we should have. This is effectively the same situation as when we code to implementations instead of interfaces, or accept a <code>List</code> when a <code>Collection</code> or even an <code>Iterable</code> would do fine. We want to avoid this so that we are not coupled to a type narrower than what we absolutely need.</p><p>Second, introducing the <code>Bird</code> type seems more an exercise in working around the limitations of the type system rather than trying to model something in our system correctly. Is it true that every <code>Bird</code> can <code>Eat</code> and <code>Fly</code>? What about ostriches and kiwis? Is it also true that everything that can <code>Eat</code> and <code>Fly</code> must necessarily be a <code>Bird</code>?</p><p>By working with intersection types, our intent is as clear as possible: we explicitly care only about such types that can both <code>Eat</code> and <code>Fly</code>, whatever those types may be.</p><p>We now have an idea of how to make our intent for a type as narrow and explicit as possible. Let's turn our attention to <em>union types</em> to consider the other direction: how to make explicit all the possible types we can deal with.</p><h2 id="union-types">Union Types</h2><h3 id="what-is-a-union-type">What is a Union Type?</h3><p>A <strong>union type</strong> is a type that represents an <em>or</em> relationship between multiple independent types. Consequently, it is only assignable to types that are the super type of <em>all</em> the unioned types. Let's imagine, for the moment, that we could define a union type <code>Employee | Team</code>, similar to how above we defined an intersection type of <code>Eat &amp; Fly</code>. Consider, for example, a situation where we may want to perform a lookup on an organizational chart and could find either an <code>Employee</code> or a <code>Team</code>. We can be explicit about what we might get back by using a union type:</p><pre><code class="Java">Employee|Team findById(long id) {
+  ...
+}
+
+Employee|Team result = findById(12345);
+if (result instanceof Employee) {
+  Employee e = (Employee) result;
+  e.fire();
+} else if (result instanceof Team) {
+  Team t = (Team) result;
+  t.disband();
+}
+</code></pre><p>Of course, we now need <code>instanceof</code> checks and casts, but the union type offers us more safety over the alternative. If we had written this without union types, we may be forced to simply return an <code>Object</code> from the <code>findById(long)</code> method. We would still have to deal with the <code>instanceof</code> checks and casts, but we would have no help from the compiler to make sure we were testing for the correct types.</p><blockquote><p>We could do a bit better if we had more powerful language features available to us, such as implicit casts after an <code>instanceof</code> check, or pattern matching on types. Both of these are out of scope for this article, but, for reference, here's the same example as above in Ceylon. Note also that the Ceylon compiler can verify that our <code>switch</code> is exhaustive.</p></blockquote><pre><code class="ceylon">Employee|Team result = findById(12345);
+switch (result)
+case (is Employee) { result.fire(); }
+case (is Team) { result.disband(); }
+</code></pre><p>This example is a little contrived, so now that we understand what union types are conceptually, let's dig a little deeper a consider a case that is much more practical: <em>how to be explicit about missing values</em>.</p><h3 id="modeling-the-absence-of-a-value">Modeling the Absence of a Value</h3><p>One example of a very useful union type is the union of some type <code>T</code> and <code>None</code>. Such a union type could be used to model the potential presence or absence of a value. Unfortunately, within the Java type system, there is no <code>None</code> or <code>Null</code> type to model absence, but there is a type that was introduced in Java 8 (and in earlier versions via third party libraries) which approximates this idea: <code>Optional&lt;T&gt;</code>. I say <em>approximates</em> because, despite capturing the concept of <code>T | Null</code>, an <code>Optional&lt;T&gt;</code> does not have direct support in the Java type system; it is just a class like any other. For example, I could still undermine the whole point of <code>Optional&lt;T&gt;</code> by returning <code>null</code> instead, since <code>null</code> is assignable to any type.</p><blockquote><p>In languages like Ceylon or Kotlin, <code>String?</code> and <code>String</code> are two effectively distinct types, with the former being nullable and that latter guaranteed to never be <code>null</code>. This allows the language to do some enforcement and eliminates the possibility of the annoying null pointer exception.</p></blockquote><blockquote><p>There are Java annotations (<code>@Nonnull</code> and <code>@Nullable</code>) provided by third party libraries that can be used to get some compiler assistance, but as with <code>Optional&lt;T&gt;</code>, this can be circumvented.</p></blockquote><p>So, under what circumstances is a type like <code>Optional&lt;T&gt;</code> useful? Consider a common situation: searching a collection for a result. Imagine we have an <code>AddressBook</code> which contains <code>Contact</code>s, and we can look up a <code>Contact</code> given some sort of search criteria:</p><pre><code class="java">class Contact {
+  private final String firstName;
+  private final String lastName;
+  private final String email;
+
+  Contact(String firstName, String lastName) {
+    this(firstName, lastName, null);
+  }
+
+  Contact(String firstName, String lastName, String email) {
+    this.firstName = firstName;
+    this.lastName = lastName;
+    this.email = email;
+  }
+
+  String firstName() { return firstName; }
+  String lastName() { return lastName; }
+  String email() { return email; }
+}
+
+class AddressBook {
+  private final Collection&lt;Contact&gt; contacts = new ArrayList&lt;&gt;();
+
+  AddressBook add(Contact contact) {
+    contacts.add(contact);
+    return this;
+  }
+
+  Contact findByLastName(String lastName) {
+    for (Contact c : contacts) {
+      if (Objects.equals(c.lastName(), lastName)) {
+        return c;
+      }
+    }
+
+    return null;
+  }
+}
+
+AddressBook addressBook =
+      new AddressBook()
+          .add(new Contact(
+              "Jason",
+              "Bullers",
+              "jason.bullers@gmail.com"
+          ))
+          .add(new Contact(
+              "Bob",
+              "Loblaw",
+              "bob.loblaw@blahblah.ca"
+          ));
+
+mailer.sendEmailTo(addressBook.findByLastName("Bullers").email());
+</code></pre><p>This looks okay until we realize that extracting the <code>email</code> from our contact might throw a <code>NullPointerException</code>, because a matching contact may not have been found! Even if we find a contact, that contact's email might be <code>null</code> and could cause <code>sendEmailTo</code> to fail. We definitely don't want that to happen, so we fix the code:</p><pre><code class="java">Contact bullers = addressBook.findByLastName("Bullers");
+if (bullers != null) {
+  String email = bullers.email();
+  if (email != null) {
+    mailer.sendEmailTo(email);
+  }  
+}
+</code></pre><p>There are two problems with this solution. First is that it adds a lot of clutter. Second, and more importantly, <strong>nothing about the <code>findByLastName(String)</code> or <code>email()</code> method signatures told us we should be handling the <code>null</code> case</strong>. This is a very dangerous place to find ourselves in, because we are now coding either to javadocs or to implementation details rather than the compiler-enforced contract set out by the API. How can <code>Optional&lt;T&gt;</code> help us out of this situation?</p><p>Recall our problem: we are trying to find a <code>Contact</code> by last name, but may not have a match. This is exactly what the union type <code>Contact | Null</code> expresses! Let's update our implementation of <code>email()</code> accordingly:</p><pre><code class="java">Optional&lt;String&gt; email() { return Optional.ofNullable(email); }
+</code></pre><p>Let's also try writing the <code>findByLastName(String)</code> method again:</p><pre><code class="java">Optional&lt;Contact&gt; findByLastName(String lastName) {
+  for (Contact c : contacts) {
+    if (Objects.equals(c.lastName(), lastName)) {
+      return Optional.of(c);
+    }
+  }
+
+  return Optional.empty();
+}
+</code></pre><p>The change to the implementation is minor, but the impact on client code is profound. We no longer get back a <code>Contact</code>. Instead, we get back a type that <em>clearly represents the fact that our query may not have a result</em>. We are now forced to deal with this situation explicitly before we can do anything with the result:</p><pre><code class="java">Optional&lt;Contact&gt; bullers = addressBook.findByLastName("Bullers");
+if (bullers.isPresent()) {
+  Optional&lt;String&gt; email = bullers.get().email();
+  if (email.isPresent()) {
+    mailer.sendEmailTo(email);
+  }
+}
+</code></pre><p>This solves our second problem, but it looks like the first problem still remains. This code may be safer, but is just as verbose as before. Can we do better?</p><h3 id="a-context-for-computation">A Context for Computation</h3><p>We'll come back to the general idea of union types later, but right now let's take a little detour and have a closer look at <code>Optional&lt;T&gt;</code> and how we can solve the verbosity problem we saw earlier.</p><p><code>Optional&lt;T&gt;</code> is an example of what is know in the world of functional programming as a <strong>monad</strong>. This is a very scary academic sounding word that has very academic and precise definitions attached to it, most of which still elude me. The good news is, in order to make use of one, we only really need to understand that <strong>a monad is a construct that puts a value in a computational context</strong>. It does this by providing two important methods:</p><ol><li>A method to wrap a value in the context</li><li>A method to transform that value within the context</li></ol><p>For the implementation of <code>Optional&lt;T&gt;</code> we have to work with, the first method is provided by <code>Optional.of(T)</code> and the second by <code>Optional.flatMap(Function&lt;? super T, Optional&lt;U&gt;&gt;)</code>. Several other useful methods are also available, such as <code>Optional.empty()</code> to create an <code>Optional&lt;T&gt;</code> with no value, <code>Optional.orElse(T)</code> to extract the value or a default, and <code>Optional.ifPresent(Consumer&lt;? super T&gt;)</code> which passes the wrapped value to the specified <code>Consumer</code> if present.</p><p>Consider the methods described above. There are three distinct categories of method here: creation (wrapping a value in the context), transformation (mapping the value, if it exists, to a new value), and termination (consuming or extracting the value, if it exists). We can combine these methods and compose behaviour, effectively creating an execution pipeline:</p><pre><code class="java">addressBook.findByLastName("Bullers")
+           .flatMap(Contact::email)
+           .ifPresent(emailer::sendEmailTo);
+</code></pre><p>As long as the value remains wrapped in the context, it is the context's responsibility to deal with the presence or absence of the value; we need only care about the computation pipeline we want to put that value through and so can work declaratively instead of imperatively. This helps keep the level of abstraction away from the detailed "how" and closer to the problem domain.</p><h3 id="exceptional-situations-and-union-types">Exceptional Situations and Union Types</h3><p>Let's consider another situation where union types might be useful: failure cases. We'll look at how Java models failure and then use the idea of union types and our brief exposure to monads to explore an alternative.</p><p>In Java, there are two general categories of exception: <strong>checked exceptions</strong> and <strong>unchecked exceptions</strong>. <em>Checked</em> exceptions include exceptions such as <code>IOException</code>; they must either be caught or declared as thrown. <em>Unchecked</em> exceptions include both runtime exceptions, such as <code>IllegalArgumentException</code> or <code>NullPointerException</code>, and errors, such as <code>OutOfMemoryError</code>; they do not need to be caught or declared. For the rest of this discussion, we will consider only <em>checked</em> exceptions and take the hard line that runtime exceptions indicate programmer error and should be allowed bubble up.</p><p>So how do checked exceptions work? As mentioned above, we are forced to either catch them or declare that they are being thrown:</p><pre><code class="java">long sumIntegersIn(File file) throws FileNotFoundException {
+  Scanner scanner = new Scanner(file);
+  long sum = 0;
+  while (scanner.hasNextInt()) {
+    sum += scanner.nextInt();
+  }
+  return sum;
+}
+
+long sum;
+try {
+  sum = sumIntegersIn(new File("input.txt"));
+} catch (FileNotFoundException e) {
+  sum = 0;
+}
+
+System.out.println(sum * 2);
+</code></pre><p>There are two things that can be a little troublesome with the construct the language provides us. First, the logic for catching and handling the exception is noisy. Arguably, it may be a better choice to allow exceptions to bubble up to a higher level where they can be handled meaningfully and in a consolidated fashion to avoid the "cross-cutting concern" of error handling to clutter the code. This is not always feasible or appropriate, however.</p><p>Second, the return type of the method <code>sumIntegersIn</code> is actually split in two pieces: it can both return a <code>long</code> on successful execution and it can "return" a <code>FileNotFoundException</code> on failure. These two types are declared in different places.</p><p>If we consider union types again, we could think of this method as if it were defined as <code>FileNotFoundException|Long sumIntegersIn(File file)</code>. How might we represent such a type?</p><blockquote><p>As with intersection types, there actually is a place in Java where union types are supported: the multi-catch block. This construct allows multiple exceptions to be handled in the same way:</p></blockquote><pre><code class="java">try {
+  // Something dangerous
+} catch (IOException|SQLException e) {
+  // Handle the exception
+}
+</code></pre><p>Let's create a new type, <code>Try&lt;T&gt;</code>. This type can wrap the results of a success (a value of type <code>T</code>) or wrap an exception representing the failure. We'll build it as a monad so that we can build a pipeline to transform the value, if present, or else handle or propagate the failure. Note this implementation of <code>Try&lt;T&gt;</code> is nowhere near complete. The goal here is simply to explore what is possible.</p><p>First, we'll define a few interfaces. The functional interfaces provided in Java 8 are not sufficient for our purposes because those interfaces do not declare any exceptions. This means that we would be forced to catch any exceptions and wrap them as runtime exceptions if we want to throw them. This would just clutter things.</p><pre><code class="java">interface TrySupplier&lt;T&gt;{
+  T get() throws Exception;
+}
+
+interface TryFunction&lt;T, R&gt; {
+  R apply(T t) throws Exception;
+}
+</code></pre><p>Next, we'll create a very minimal implementation of <code>Try&lt;T&gt;</code>:</p><pre><code class="java">abstract class Try&lt;T&gt; {
+  static &lt;T&gt; Try&lt;T&gt; ofFailable(TrySupplier&lt;T&gt; supplier) {
+    try {
+      return new Success&lt;&gt;(supplier.get());
+    } catch (Exception t) {
+      return new Failure&lt;&gt;(t);
+    }
+  }
+
+  abstract &lt;R&gt; Try&lt;R&gt; map(TryFunction&lt;T, R&gt; function);
+
+  abstract T orElse(T other);
+
+  private static class Success&lt;T&gt; extends Try&lt;T&gt; {
+    private final T value;
+
+    private Success(T value) {
+      this.value = value;
+    }
+
+    @Override
+    &lt;R&gt; Try&lt;R&gt; map(TryFunction&lt;T, R&gt; function) {
+      try {
+        return new Success&lt;&gt;(function.apply(value));
+      } catch (Exception e) {
+        return new Failure&lt;&gt;(e);
+      }
+    }
+
+    @Override
+    T orElse(T other) {
+      return value;
+    }
+  }
+
+  private static class Failure&lt;T&gt; extends Try&lt;T&gt; {
+    private final Exception exception;
+
+    private Failure(Exception exception) {
+      this.exception = exception;
+    }
+
+    @Override
+    &lt;R&gt; Try&lt;R&gt; map(TryFunction&lt;T, R&gt; function) {
+      return this;
+    }
+
+    @Override
+    T orElse(T other) {
+      return other;
+    }
+  }
+}
+</code></pre><p>And finally, we'll use this new type in place of checked exceptions:</p><pre><code class="java">Try&lt;Long&gt; sumIntegersIn(File file) {
+  return Try.ofFailable(() -&gt; new Scanner(file))
+            .map(this::sumIntegersFrom);
+}
+
+private long sumIntegersFrom(Scanner scanner) {
+  long sum = 0;
+  while (scanner.hasNextInt()) {
+    sum += scanner.nextInt();
+  }
+  return sum;
+}
+
+long sum = sumIntegersIn(new File("input.txt")).orElse(0L);
+System.out.println(sum * 2);
+</code></pre><p>This code accomplishes the same thing as the version above: it attempts to read and sum all the integers present in a specified file, and if reading the file fails, sets the sum to zero. This implementation is just as explicit about the potential for failure as the previous version, but the calling code is cleaner; where previously there was a try-catch construct, this version has a call to <code>orElse(T)</code>.</p><p>If we had no meaningful way to handle the failure case, we could instead return the <code>Try&lt;T&gt;</code> in the event of a failure (perhaps by testing the <code>Try&lt;T&gt;</code> with an <code>isFailure()</code> similar to the <code>isPresent()</code> of <code>Optional&lt;T&gt;</code>). We could also add functionality to propagate the exception. That might look something like this:</p><pre><code class="java">abstract class Try&lt;T&gt; {
+  ...
+
+  abstract T orElsePropagateFailure();
+
+  private static class Success&lt;T&gt; extend Try&lt;T&gt; {
+    ...
+
+    @Override
+    T orElsePropagateFailure() {
+      return value;
+    }
+  }
+
+  private static class Failure&lt;T&gt; extend Try&lt;T&gt; {
+    ...
+
+    @Override
+    T orElsePropagateFailure() {
+      throw new RuntimeException(exception);
+    }
+  }
+}
+
+long sum = sumIntegersIn(new File("input.txt")).orElsePropagateFailure();
+System.out.println(sum * 2);
+</code></pre><h2 id="final-remarks">Final Remarks</h2><p>Intersection and union types open the door for some interesting solutions to common problems faced in object-oriented software development. As we saw above, the Java language does not really offer much in the way of direct support for modeling these kinds of types, but the type system is rich enough to approximate these ideas.</p><p>We saw in the examples above that libraries can be used to create union types and even give them monadic properties. Whether or not this approach is always <em>practical</em> is debatable, but understanding what a programming language makes possible opens a lot of doors to design alternatives than can expand the expressiveness of the language for your domain. Sometimes, it really does pay to build a better mousetrap.</p>
+</div>
+
+<div id="post-tags">
+    <b>Tags: </b>
+    
+    <a href="/tags/Design">Design</a>
+    
+    <a href="/tags/Java">Java</a>
+    
+</div>
+
+
+    <div id="prev-next">
+        
+        <a href="/posts/2016-05-25-encapsulation">&laquo; Encapsulation and Information Hiding</a>
+        
+        
+        <a class="right" href="/posts/2016-02-17-inheritance-delegation">Inheritance and Delegation &raquo;</a>
+        
+    </div>
+
+    
+
+
+</div>
+
+            </div>
+    </div>
+    <footer>Copyright &copy; 2023 Jason Bullers
+        <p style="text-align: center;">Powered by <a href="http://cryogenweb.org">Cryogen</a></p></footer>
+</div>
+<script src="//code.jquery.com/jquery-1.11.0.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
+<script src="/js/highlight.min.js" type="application/javascript"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+</body>
+</html>
