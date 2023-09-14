@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+    <meta charset="utf-8"/>
+    
+    <title>ramblings: Clojure Scripts</title>
+    
+<meta name="keywords" content="Clojure,Testing,Java,Design">
+
+<meta name="description" content="Not to be confused with ClojureScript, you can write scripts with Clojure using Babashka. Super handy when you just need to whip something together quick and don&#39;t want to struggle with Bash. Here&#39;s my first encounter with this handy tool.">
+
+<meta property="og:description" content="Not to be confused with ClojureScript, you can write scripts with Clojure using Babashka. Super handy when you just need to whip something together quick and don&#39;t want to struggle with Bash. Here&#39;s my first encounter with this handy tool.">
+
+
+<meta property="og:url" content="https://jbullers.github.io/posts/2023-09-12-babashka" />
+<meta property="og:title" content="Clojure Scripts" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content="https://jbullers.github.io/posts/2023-09-12-babashka" />
+<meta name="twitter:title" content="Clojure Scripts" />
+<meta name="twitter:description" content="Not to be confused with ClojureScript, you can write scripts with Clojure using Babashka. Super handy when you just need to whip something together quick and don&#39;t want to struggle with Bash. Here&#39;s my first encounter with this handy tool." />
+
+<meta name="twitter:creator" content="" />
+
+    <link rel="canonical" href="https://jbullers.github.io/posts/2023-09-12-babashka">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="//fonts.googleapis.com/css?family=Rubik:400" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/css/bootstrap.min.css">
+    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.7.0/styles/default.min.css">
+    <link href="/css/screen.css" rel="stylesheet" type="text/css" />
+    <link href="/css/nord.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+
+
+<nav class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">
+              <span class="accent">[& </span>ramblings<span class="accent">]</span>
+            </a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+            <ul class="nav navbar-nav navbar-right">
+                <li ><a href="/">Home</a></li>
+                <li
+                ><a href="/archives">Archives</a></li>
+                
+                <li ><a href="/tags">Tags</a></li>
+                        
+                
+                <li
+                >
+                <a href="/pages/about">About</a>
+                </li>
+                
+            </ul>
+        </div><!--/.nav-collapse -->
+    </div><!--/.container-fluid -->
+</nav>
+
+
+<div class="container">
+    <div class="row">
+            <div id="content">
+                
+<div id="post">
+    <div class="post-header">
+    <div id="post-meta" class="row">
+        <div class="col-lg-6">September 12, 2023</div>
+        
+    </div>
+    <h2>Clojure Scripts</h2>
+</div>
+<div>
+    
+    <p>A little while ago, I decided to add a bit of customization to my prompt. I use <a href="https://starship.rs/">Starship</a> because I like the look of it, and it's portable between my WSL environment and Powershell for when I need to work from the Windows terminal (not often for personal projects, but fairly often the case at work).</p><p>Out of the box, Starship supports quite a few languages and environments, and it will show version information when you're in a project directory. For example, if I'm in a Java project directory, it will show me the version of Java installed on my system:</p><p><img src="../img/starship-java.gif" alt="Starship prompt showing Java version" /></p><p>Here you can see that the prompt is reporting that I'm in a Java project directory and have Java version 17.0.7 installed. Actually, I'm in a Clojure project directory; by default, Starship treats directories containing <code>deps.edn</code> as an indicator to show the Java version.</p><p>While that's helpful, I figured it would be even better if I could also show the Clojure version of the project. I fiddled around for a while, and was finally able to come up with the following Starship configuration:</p><pre><code class="toml">[custom.clojure]
+command = '''awk 'match($0, /clojure \{:mvn\/version "(.*)"\}\}/, a) { print a[1] }' deps.edn'''
+detect_files = ['deps.edn']
+symbol = ' '
+format = 'and [$symbol($output)]($style) '
+style = 'blue'
+</code></pre><p>The interesting part is the command being executed, which essentially searches the project's <code>deps.edn</code> for <code>clojure {:mvn/version "&lt;something&gt;"}}</code> and extracts the <code>&lt;something&gt;</code>. For reference, the <code>deps.edn</code> may look something like this:</p><pre><code class="clojure">{:paths ["src"]
+
+ :deps
+ {org.clojure/clojure {:mvn/version "1.10.1"}
+  ;; other dependencies
+}
+</code></pre><p>That gives me a nice prompt that looks like this:</p><p><img src="../img/starship-clojure.gif" alt="Starship prompt showing Java and Clojure versions" /></p><p>You can see that in addition to Java version 17.0.7, the prompt also tells us the project is using Clojure version 1.10.1. Mission accomplished, right?</p><p>Well, it turns out, you don't technically <em>have to</em> specify the Clojure version in your project's <code>deps.edn</code>. At a minimum, it will always be found in the base <code>deps.edn</code> that was installed with the CLI. Technically, there are <strong>three</strong> different <code>deps.edn</code> files in play that all get merged together, and the Clojure version could come from any of them.</p><p>What I'd need to do in order for the prompt to work properly in all circumstances is to check the project <code>deps.edn</code> for the version, and if it's not there, then check <code>~/.clojure/deps.edn</code>, and if it's not <em>there</em>, finally fall back to the CLI's <code>/usr/local/lib/clojure/deps.edn</code>. I had a hard enough time figuring out the <code>awk</code> command above, I had no idea how I'd run that command conditionally across multiple files.</p><p>But I didn't need to figure that out! I remembered reading about <a href="https://babashka.org/">Babashka</a> a while back, and my current problem was a perfect fit for their tagline: "Avoid switching between Clojure and bash scripts." I may not be that great at Clojure, but I'm significantly worse at bash, so why not give it a go?</p><p>Here's my script in all its glory:</p><pre><code class="clojure">#!/usr/bin/env bb
+
+(require '[babashka.fs :as fs])
+
+(defn parse-version [deps-edn]
+  (get-in deps-edn [:deps 'org.clojure/clojure :mvn/version]))
+
+(defn read-deps-edn [path]
+  (and (fs/readable? path)
+       (edn/read-string (slurp (str path)))))
+
+(def clj-version (comp parse-version read-deps-edn))
+
+(println (or (clj-version "./deps.edn")
+             (clj-version (fs/expand-home "~/.clojure/deps.edn"))
+             (clj-version "/usr/local/lib/clojure/deps.edn")))
+</code></pre><p>First, I defined a <code>parse-version</code> function. Given a <code>deps.edn</code> map as input, it pulls out the Clojure version. Already, I'm reaping benefits: this is doing the same thing as the <code>awk</code> command, but now I'm working with a data structure instead of text, which is a lot more robust. I also find this infinitely more readable (subjective, of course).</p><p>Next, I defined a <code>read-deps-edn</code> function. Given a path, if the file at that path is readable, then read it in as EDN and produce a Clojure data structure, or <code>nil</code> if the file was not readable (e.g. it doesn't exist). There may be nicer ways to handle checking if there is indeed a project <code>deps.edn</code>, but this is what I came up with, and it works well enough.</p><p>I then compose these two functions to create the function <code>clj-version</code>: calling this function with a path produces the Clojure version in the <code>deps.edn</code> at that path, or <code>nil</code>.</p><p>Finally, I output the first Clojure version I find, in order of <code>deps.edn</code> precedence. Nice.</p><p>There might be a way to ask the <code>clojure</code> CLI to output the Clojure version it's using (and resolve the different <code>deps.edn</code> locations for me), which I could then just parse, but I couldn't figure out how to do it in any way that performed as well as just parsing the files myself. In any case, I think the above solution is still much nicer than messing around with text directly, and it was a fun little introduction to Babashka.</p>
+</div>
+
+<div id="post-tags">
+    <b>Tags: </b>
+    
+    <a href="/tags/Clojure">Clojure</a>
+    
+</div>
+
+
+    <div id="prev-next">
+        
+        
+        <a class="right" href="/posts/2023-09-10-why-clojure">Why Clojure? &raquo;</a>
+        
+    </div>
+
+    
+
+
+</div>
+
+            </div>
+    </div>
+    <footer>Copyright &copy; 2023 Jason Bullers
+        <p style="text-align: center;">Powered by <a href="http://cryogenweb.org">Cryogen</a></p></footer>
+</div>
+<script src="//code.jquery.com/jquery-1.11.0.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
+<script src="/js/highlight.min.js" type="application/javascript"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+</body>
+</html>
