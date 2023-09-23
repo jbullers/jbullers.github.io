@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+    <meta charset="utf-8"/>
+    
+    <title>ramblings: Experimenting with Clojure: Advent of Code 2022 - Day 7</title>
+    
+<meta name="keywords" content="Clojure,Testing,Java,Design">
+
+<meta name="description" content="I&#39;ve been getting some Clojure practice in by tackling the Advent of Code puzzles. 2022&#39;s Day 7 presented a scenario that sounded like a good fit for some Clojure namespaces I&#39;d read about, but never used before. I was pleasantly surprised with the results.">
+
+<meta property="og:description" content="I&#39;ve been getting some Clojure practice in by tackling the Advent of Code puzzles. 2022&#39;s Day 7 presented a scenario that sounded like a good fit for some Clojure namespaces I&#39;d read about, but never used before. I was pleasantly surprised with the results.">
+
+
+<meta property="og:url" content="https://jbullers.github.io/posts/2023-09-22-aoc-2022-day7" />
+<meta property="og:title" content="Experimenting with Clojure: Advent of Code 2022 - Day 7" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content="https://jbullers.github.io/posts/2023-09-22-aoc-2022-day7" />
+<meta name="twitter:title" content="Experimenting with Clojure: Advent of Code 2022 - Day 7" />
+<meta name="twitter:description" content="I&#39;ve been getting some Clojure practice in by tackling the Advent of Code puzzles. 2022&#39;s Day 7 presented a scenario that sounded like a good fit for some Clojure namespaces I&#39;d read about, but never used before. I was pleasantly surprised with the results." />
+
+<meta name="twitter:creator" content="" />
+
+    <link rel="canonical" href="https://jbullers.github.io/posts/2023-09-22-aoc-2022-day7">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="//fonts.googleapis.com/css?family=Rubik:400" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/css/bootstrap.min.css">
+    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.7.0/styles/default.min.css">
+    <link href="/css/screen.css" rel="stylesheet" type="text/css" />
+    <link href="/css/nord.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+
+
+<nav class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">
+              <span class="accent">[& </span>ramblings<span class="accent">]</span>
+            </a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+            <ul class="nav navbar-nav navbar-right">
+                <li ><a href="/">Home</a></li>
+                <li
+                ><a href="/archives">Archives</a></li>
+                
+                <li ><a href="/tags">Tags</a></li>
+                        
+                
+                <li
+                >
+                <a href="/pages/about">About</a>
+                </li>
+                
+            </ul>
+        </div><!--/.nav-collapse -->
+    </div><!--/.container-fluid -->
+</nav>
+
+
+<div class="container">
+    <div class="row">
+            <div id="content">
+                
+<div id="post">
+    <div class="post-header">
+    <div id="post-meta" class="row">
+        <div class="col-lg-6">September 22, 2023</div>
+        
+    </div>
+    <h2>Experimenting with Clojure: Advent of Code 2022 - Day 7</h2>
+</div>
+<div>
+    <ol class="toc"><li><a href="#constructing-the-filesystem">Constructing the Filesystem</a></li><li><a href="#calculating-directory-sizes">Calculating Directory Sizes</a></li><li><a href="#filter-and-sum-the-directories">Filter and Sum the Directories</a></li><li><a href="#final-remarks">Final Remarks</a></li></ol>
+    <p>It should go without saying, but <strong>spoilers for Advent of Code 2022 Day 7</strong>. And while I'm spoiling things up front, the namespaces I used to tackle the problem are <a href="https://clojuredocs.org/clojure.zip">clojure.zip</a> and <a href="https://clojuredocs.org/clojure.walk">clojure.walk</a>. Read on to see how!<sup id="fnref-1"><a class="footnote-ref" href="#fn-1">1</a></sup></p><p>The <a href="https://adventofcode.com/2022/day/7">puzzle</a> I'll be covering in this article is as follows:</p><p>Given some terminal output that show the results of navigating a filesystem, find all the directories with a total size of at most 100 000 and sum the sizes of those directories. The given sample terminal output (puzzle input) is:</p><pre><code>$ cd /
+$ ls
+dir a
+14848514 b.txt
+8504156 c.dat
+dir d
+$ cd a
+$ ls
+dir e
+29116 f
+2557 g
+62596 h.lst
+$ cd e
+$ ls
+584 i
+$ cd ..
+$ cd ..
+$ cd d
+$ ls
+4060174 j
+8033020 d.log
+5626152 d.ext
+7214296 k
+</code></pre><p>There's probably some clever way to handle this, but my first thought was to break the problem up into very simple steps and not worry too much about algorithmic efficiency. I figured in order to solve this puzzle, I would have to:</p><ol><li>Parse the given input into a filesystem tree</li><li>Calculate the size of each directory in the tree</li><li>Walk the tree and filter the directory nodes with size of at most 100 000</li><li>Sum the sizes of the filtered directory nodes</li></ol><h2 id="constructing-the-filesystem">Constructing the Filesystem</h2><p>It seemed to me that step 1 would require some interesting recursion with backtracking, where I would have to keep track of the tree so far so that <code>cd ..</code> would take me to the right place. I didn't find the thought of doing that particularly exciting, but then I remembered an interesting discovery I made a while ago while browsing Clojure API docs: a namespace called <code>clojure.zip</code>.</p><p>The documentation for this little namespace is even more terse than some of the tersest stuff in <code>clojure.core</code>, but it was intriguing enough to me at the time that I'd read some articles and watched some videos about it; I knew from prior exploration that this namespace provides a "functional zipper." A zipper is essentially a cursor into a hierarchical data structure that can be moved around to point to different nodes (e.g. <code>up</code>, <code>down</code>, <code>right</code>) and make changes to the structure at the cursor (e.g. <code>append-child</code> to append a new node at the cursor). That seemed right for the problem of parsing the given input into a filesystem tree, as it does all the heavy lifting of traversing children, appending filesystem nodes, and navigating back up the tree in response to <code>cd ..</code>.</p><p>I'll walk through the code piece by piece below, but here's all the parsing code up front for reference (note that in the following code, <code>clojure.zip</code> is aliased as <code>z</code>):</p><pre><code class="clojure">(defn dir [name]
+  {:name name :children []})
+
+(defn file [name size]
+  {:name name :size (parse-long size)})
+
+(defn dir? [file]
+  (contains? file :children))
+
+(defn fs-zipper [root]
+  (z/zipper dir? :children (fn [n coll] (assoc n :children coll)) root))
+
+(defn insert-dir [loc name]
+  (z/append-child loc (dir name)))
+
+(defn insert-file [loc name size]
+  (z/append-child loc (file name size)))
+
+(defn dir-loc [name loc]
+  (let [file (z/node loc)]
+    (when (and (dir? file) (= (:name file) name))
+      loc)))
+
+(defn nav-to-dir [loc name]
+  (some #(dir-loc name %) (-&gt;&gt; loc z/down (iterate z/right))))
+
+(defn parse-command
+  [loc input]
+  (condp re-find input
+    #"\$ cd /" (fs-zipper (dir "/"))
+    #"\$ ls" loc
+    #"dir (.+)" :&gt;&gt; (fn [[_ name]] (insert-dir loc name))
+    #"(\d+) (.+)" :&gt;&gt; (fn [[_ size name]] (insert-file loc name size))
+    #"cd \.\." (z/up loc)
+    #"cd (.+)" :&gt;&gt; (fn [[_ name]] (nav-to-dir loc name))))
+</code></pre><p>The workhorse of the above code is <code>parse-command</code>, and it's intended to be used as a reducing function to build up the filesystem tree using a zipper (the terminology used by the zipper functions to indicate the current location you're pointing to in the tree is "loc"). Once the tree has been build up with the zipper, we can "unwrap" the data structure by calling <code>z/root</code> on it. Parsing the sample input into a filesystem tree looks like this:</p><pre><code class="clojure">(defn parse [input]
+  (-&gt;&gt; input
+       str/split-lines
+       (reduce parse-command nil)
+       z/root))
+       
+(parse sample-input)
+</code></pre><p>So what does <code>parse-command</code> do?</p><p>Given a loc and line of input, it matches one of the six possibilities and returns the resulting loc. The possibilities are:</p><ol><li><code>$ cd /</code> creates a new zipper with it's starting node as the directory <code>/</code>. I probably could (should?) have done this outside of <code>parse-command</code> since it only happens exactly once, but I liked the uniformity of having all the possible commands parsed and appearing here in this one place.</li><li><code>$ ls</code> is a no-op and returns the loc unchanged.</li><li><code>dir (.+)</code> matches the listing of a directory and captures the directory name. <code>condp</code> has a neat little feature where you can have a clause take the form <code>test-expr :&gt;&gt; result-fn</code> instead of the typical <code>test-expr result-expr</code>. With this form, <code>result-fn</code> is meant to be a function that takes the result of the predicate: in this case, that means that the function will be called with the result of <code>(re-find #"dir (.+)" input)</code> as its input. The result of <code>re-find</code> is a vector with its first element being the entire match, and each subsequent element being a capture group. For example, if the input were <code>"dir a"</code>, then the result of <code>re-find</code> would be <code>["dir a" "a"]</code>, and so our anonymous <code>result-fn</code> is simply destructuring this vector, calling <code>(insert-dir loc "a")</code> and returning the result.</li><li><code>(\d+) (.+)</code> is similar to the above but matches the listing of a file and captures the file size and name. For example, if the input were <code>"14848514 b.txt"</code>, then we would end up calling <code>(insert-file loc "b.txt" "14848514")</code> and returning the result.</li><li><code>cd ..</code> returns the result of navigating "up" from the current loc. This was the part that really motivated me to try out zippers: it's just so clean and maps one-to-one with the problem statement, no extra gymnastics on my part to keep track of things.</li><li><code>cd (.+)</code> takes care of navigation down the tree into subdirectories. It used the same <code>condp</code> feature as the directory and file cases. For example, if the input were <code>"cd a"</code>, then we would end up calling <code>(nav-to-dir loc "a")</code> and returning the result.</li></ol><p>Next, let's take a closer look at the functions that manipulate our tree. We'll start with creating the zipper:</p><pre><code class="clojure">(defn fs-zipper [root]
+  (z/zipper dir? :children (fn [n coll] (assoc n :children coll)) root))
+</code></pre><p>In order to create a zipper, we need to provide a few things:</p><ol><li>A predicate that determines whether a node is a branch (in our case, filesystem directories are branches)</li><li>A function to retrieve the child nodes of a branch</li><li>A function to set the child nodes of a given node to the given collection</li><li>The root node of the zipper (the root directory in our case)</li></ol><p>Inserting directories and files is fairly straightforward:</p><pre><code class="clojure">(defn insert-dir [loc name]
+  (z/append-child loc (dir name)))
+
+(defn insert-file [loc name size]
+  (z/append-child loc (file name size)))
+</code></pre><p>In both cases, given a loc and the regex match from <code>parse-command</code>, we destructure the match to get the relevant bits and append the appropriate node. Navigating to a given directory is a little more involved, but not by much:</p><pre><code class="clojure">(defn dir-loc [name loc]
+  (let [file (z/node loc)]
+    (when (and (dir? file) (= (:name file) name))
+      loc)))
+
+(defn nav-to-dir [loc name]
+  (some #(dir-loc name %) (-&gt;&gt; loc z/down (iterate z/right))))
+</code></pre><p><code>dir-loc</code> returns the given loc if it represents a directory with the given name, or <code>nil</code> otherwise. This allows the function to play nice with <code>some</code> in <code>nav-to-dir</code>, which returns the first truthy value. So what exactly is <code>nav-to-dir</code> doing? First, it creates a lazy seq of all the children of the node at loc: <code>z/down</code> navigates to the first child and <code>(iterate z/right)</code> iterates through them all. Then it calls <code>some</code> on that seq, looking for the first node that is a directory with the given name.</p><p>For clarity, let's look at the filesystem tree generated by parsing the sample input. For convenience, here's the sample input again:</p><pre><code>$ cd /
+$ ls
+dir a
+14848514 b.txt
+8504156 c.dat
+dir d
+$ cd a
+$ ls
+dir e
+29116 f
+2557 g
+62596 h.lst
+$ cd e
+$ ls
+584 i
+$ cd ..
+$ cd ..
+$ cd d
+$ ls
+4060174 j
+8033020 d.log
+5626152 d.ext
+7214296 k
+</code></pre><p>This gives the following data structure:</p><pre><code class="clojure">{:name "/"
+ :children [{:name "a"
+             :children [{:name "e"
+                         :children [{:name "i" :size 584}]}
+                        {:name "f" :size 29116}
+                        {:name "g" :size 2557}
+                        {:name "h.lst" :size 62596}]}
+            {:name "b.txt" :size 14848514}
+            {:name "c.dat" :size 8504156}
+            {:name "d"
+             :children [{:name "j" :size 4060174}
+                        {:name "d.log" :size 8033020}
+                        {:name "d.ext" :size 5626152}
+                        {:name "k" :size 7214296}]}]
+</code></pre><h2 id="calculating-directory-sizes">Calculating Directory Sizes</h2><p>Now that we have the filesystem represented, the next step is to determine the sizes of the directories. In a language like Java, this is fairly straight forward: perform a post-order depth-first traversal of the tree and modify each directory node to have a file size being the sum of its child nodes. In Clojure, I wasn't exactly sure how to approach this, because I'd need to produce a new tree (or at least swap in new nodes) containing directories with sizes. As with the first part of the puzzle, I smelled recursion that I wasn't particularly excited to deal with. Thanks to <code>clojure.walk</code>, I didn't have to!</p><p>There's a <code>postwalk</code> function in that namespace that just <em>figures out</em> how to traverse the data structure you give it, provided it's tree-shaped in some way. You also give it a function to transform a node, and it will run this function on each node, swapping the result in to the data structure. Here's what that looks like:</p><pre><code class="clojure">(defn assoc-size [file]
+  (if-let [children (:children file)]
+    (let [dir-size (-&gt;&gt; children (map :size) (apply +))]
+      (assoc file :size dir-size))
+    file))
+
+(-&gt; sample-input
+    parse
+    (walk/postwalk assoc-size))
+</code></pre><p>After parsing the sample input into a filesystem tree, we finish up with a <code>postwalk</code> to calculate the directory sizes. As mentioned above, <code>postwalk</code> takes a function that transforms a node: <code>assoc-size</code>. This function does pretty much what you would expect: if there are children (i.e. this node is a directory), <code>assoc</code> in the sum of the sizes of all the children; otherwise, leave the node unchanged, since it already has a size specified.</p><h2 id="filter-and-sum-the-directories">Filter and Sum the Directories</h2><p>There's one interesting bit left before we coast across the finish line: how do we get Clojure to traverse the filesystem structure we've built? It turns out there's a function for that too! Since our structure is representing a tree, we can adapt it to Clojure's sequence abstraction by calling <code>tree-seq</code> on it. <code>tree-seq</code> works similarly to constructing a zipper where we have to tell it how to identify branch nodes and how to get child nodes from a branch node. In our case that's simply:</p><pre><code class="clojure">(tree-seq dir? :children filesystem)
+</code></pre><p>With a tree-seq in hand, we're good to use some familiar functions to perform the remaining calculations:</p><pre><code class="clojure">(-&gt;&gt; sample-input
+     parse
+     (walk/postwalk assoc-size)
+     (tree-seq dir? :children)
+     (filter (every-pred dir? #(&lt;= (:size %) 100000)))
+     (map :size)
+     (apply +))
+;; =&gt; 95437
+</code></pre><h2 id="final-remarks">Final Remarks</h2><p>I'm pretty happy with how this one turned out. It took a while to figure out how to use these new namespaces, but I'm sure the amount of frustration they saved over doing the recursion myself was well worth it. In general, this one really hammered home something I remember from the Functional Design in Clojure podcast<sup id="fnref-2"><a class="footnote-ref" href="#fn-2">2</a></sup> (paraphrasing): your job is to teach Clojure your domain language by writing predicates, reducing functions, etc. and then leveraging the excellent core library to do the actual work. If you look back at the code I had to write, most of it is exactly that: I define what directories and files are, how to make a filesystem zipper, what it means to insert a node in the filesystem, and how to transform a directory to include a size. The rest is pretty much just gluing existing Clojure functions together (and parsing strings, but that's also pretty domain-specific). The Clojure standard library is a gold mine of useful functions once you figure out how to leverage them properly: they're quite expressive, compose nicely, and have some neat ergonomic choices, such as <code>condp</code>'s <code>result-fn</code> alternative.<sup id="fnref-3"><a class="footnote-ref" href="#fn-3">3</a></sup></p><p>It also reenforced how important it is to get your data in the right shape for the problem you're trying to solve. Once the filesystem was built up and populated with file sizes for directories, the rest of the work was pretty simple. It's classic divide-and-conquer: take the problem and break it into two. The first solves the problem assuming the data is in an easy-to-use shape; the second parses the input into that easy-to-use shape.</p><p>I had a lot of fun on this one, and I'll be keeping my eyes open for other treasures in the standard library!</p><div class="footnotes"><hr /><ol><li id="fn-1"><p>You can find all the code <a href="https://github.com/jbullers/advent_of_code/blob/main/src/advent2022/day07.clj">here</a>, including my solution for part 2 of the puzzle. I didn't bother covering it above because it was pretty trivial by comparison and followed easily from part 1.</p><a href="#fnref-1" class="footnote-backref">↩</a></li><li id="fn-2"><p><a href="https://clojuredesign.club/">https://clojuredesign.club/</a></p><a href="#fnref-2" class="footnote-backref">↩</a></li><li id="fn-3"><p>Another interesting one is <a href="https://clojuredocs.org/clojure.string/replace">clojure.string/replace</a> which provides a similar function alternative:
+<code>(str/replace "my blog title" #"\b(\w)" (fn [[_ letter]] (str/upper-case letter))) ;; =&gt; "My Blog Title"</code></p><a href="#fnref-3" class="footnote-backref">↩</a></li></ol></div>
+</div>
+
+<div id="post-tags">
+    <b>Tags: </b>
+    
+    <a href="/tags/Clojure">Clojure</a>
+    
+</div>
+
+
+    <div id="prev-next">
+        
+        
+        <a class="right" href="/posts/2023-09-12-babashka">Clojure Scripts &raquo;</a>
+        
+    </div>
+
+    
+
+
+</div>
+
+            </div>
+    </div>
+    <footer>Copyright &copy; 2023 Jason Bullers
+        <p style="text-align: center;">Powered by <a href="http://cryogenweb.org">Cryogen</a></p></footer>
+</div>
+<script src="//code.jquery.com/jquery-1.11.0.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
+<script src="/js/highlight.min.js" type="application/javascript"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+</body>
+</html>
