@@ -1,0 +1,895 @@
+<!DOCTYPE html>
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+    <meta charset="utf-8"/>
+    
+    <title>ramblings: Testing and Testability</title>
+    
+<meta name="keywords" content="Testing,Java,Clojure,Design">
+
+<meta name="description" content="I&#39;ve learned a lot of lessons about testing and testability in Java over the years,
+               specifically: what kinds of tests are worth writing, and how (and when) do you design
+               for testability without twisting your design into knots for the sake of testing.
+               Let&#39;s look at a couple of examples.">
+
+<meta property="og:description" content="I&#39;ve learned a lot of lessons about testing and testability in Java over the years,
+               specifically: what kinds of tests are worth writing, and how (and when) do you design
+               for testability without twisting your design into knots for the sake of testing.
+               Let&#39;s look at a couple of examples.">
+
+
+<meta property="og:url" content="https://jbullers.github.io/posts/2023-10-05-testing-and-testability" />
+<meta property="og:title" content="Testing and Testability" />
+<meta property="og:type" content="article" />
+<meta name="twitter:card" content="summary_large_image" />
+<meta name="twitter:url" content="https://jbullers.github.io/posts/2023-10-05-testing-and-testability" />
+<meta name="twitter:title" content="Testing and Testability" />
+<meta name="twitter:description" content="I&#39;ve learned a lot of lessons about testing and testability in Java over the years,
+               specifically: what kinds of tests are worth writing, and how (and when) do you design
+               for testability without twisting your design into knots for the sake of testing.
+               Let&#39;s look at a couple of examples." />
+
+<meta name="twitter:creator" content="@jasonbullers" />
+
+    <link rel="canonical" href="https://jbullers.github.io/posts/2023-10-05-testing-and-testability">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link href="//fonts.googleapis.com/css?family=Rubik:400" rel="stylesheet" type="text/css">
+    <link rel="stylesheet" href="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/css/bootstrap.min.css">
+    <link href="//maxcdn.bootstrapcdn.com/font-awesome/4.2.0/css/font-awesome.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="//cdnjs.cloudflare.com/ajax/libs/highlight.js/9.7.0/styles/default.min.css">
+    <link href="/css/screen.css" rel="stylesheet" type="text/css" />
+    <link href="/css/nord.min.css" rel="stylesheet" type="text/css" />
+</head>
+<body>
+
+
+<nav class="navbar navbar-default navbar-fixed-top">
+    <div class="container">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="/">
+              <span class="accent">[& </span>ramblings<span class="accent">]</span>
+            </a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+            <ul class="nav navbar-nav navbar-right">
+                <li ><a href="/">Home</a></li>
+                <li
+                ><a href="/archives">Archives</a></li>
+                
+                <li ><a href="/tags">Tags</a></li>
+                        
+                
+                <li
+                >
+                <a href="/pages/about">About</a>
+                </li>
+                
+                <li><a href="/feed.xml">RSS</a></li>
+            </ul>
+        </div><!--/.nav-collapse -->
+    </div><!--/.container-fluid -->
+</nav>
+
+
+<div class="container">
+    <div class="row">
+            <div id="content">
+                
+<div id="post">
+    <div class="post-header">
+    <div id="post-meta" class="row">
+        <div class="col-lg-6">October 5, 2023</div>
+        
+    </div>
+    <h2>Testing and Testability</h2>
+</div>
+<div>
+    <ol class="toc"><li><a href="#what-kinds-of-tests-are-valuable">What Kinds of Tests Are Valuable?</a></li><ol><li><a href="#testing-the-api">Testing the API</a></li><li><a href="#testing-behaviour">Testing Behaviour</a></li><li><a href="#squashing-bugs">Squashing Bugs</a></li></ol><li><a href="#designing-for-testability">Designing for Testability</a></li><ol><li><a href="#do-i-need-to">Do I Need To?</a></li><ol><li><a href="#prototyping">Prototyping</a></li><li><a href="#one-and-done">One And Done</a></li><li><a href="#building-the-toolkit">Building the Toolkit</a></li><li><a href="#continued-development">Continued Development</a></li></ol><li><a href="#a-better-design">A Better Design</a></li></ol><li><a href="#final-remarks">Final Remarks</a></li></ol>
+    <p>I've written about testing <a href="/posts/2016-09-09-impossible-test">before</a>
+in response to some struggles I was having introducing automated tests to my code base at work.
+That post focused mainly on safely making seams in existing code to get it under test,
+but didn't really consider the question of what to test or when
+(it's also a fairly domain specific example and was geared toward an audience of coworkers).
+Over time, I've gained some insight into what kinds of tests were worth writing,
+how to structure them, and how to design for testability.</p><h2 id="what-kinds-of-tests-are-valuable">What Kinds of Tests Are Valuable?</h2><p>We'll explore this question using my favourite simple example for this topic: a stack.
+Consider the following Java class
+(the astute reader will notice a bug in the implementation; we'll get to that):</p><pre><code class="java">import java.util.ArrayList;
+import java.util.List;
+import javax.annotation.CheckReturnValue;
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+
+import static java.util.Objects.requireNonNull;
+
+/**
+ * An immutable FIFO data structure.
+ * &lt;p&gt;
+ * Create a stack with {@code Stack.&amp;lt;Type&amp;gt;empty()} and add elements
+ * using {@link #push(E)}. The top of the stack can be retrieved by calling
+ * {@link #peek()}, and the top-most element can be removed by calling
+ * {@link #pop()}. Note that since this stack implementation is immutable,
+ * both {@code peek()} and {@code pop()} must be called to remove and
+ * retain a reference to the top-most stack element.
+ *
+ * @param &lt;E&gt; the type of elements in this stack
+ */
+public class Stack&lt;E&gt; {
+
+    private static final Stack&lt;?&gt; EMPTY = new Stack&lt;&gt;();
+
+    /**
+     * @param &lt;E&gt; the type of elements in this stack
+     *
+     * @return an empty stack to hold elements of the desired type
+     */
+    @SuppressWarnings("unchecked")
+    public static &lt;E&gt; Stack&lt;E&gt; empty() {
+        return (Stack&lt;E&gt;) EMPTY;
+    }
+
+    private List&lt;E&gt; elements = new ArrayList&lt;&gt;();
+
+    private Stack() {}
+
+    /**
+     * @param element the element to push
+     *
+     * @return a new stack containing the given element
+     */
+    @CheckReturnValue
+    public Stack&lt;E&gt; push(@Nonnull E element) {
+        var stack = new Stack&lt;E&gt;();
+        stack.elements = new ArrayList&lt;&gt;(this.elements);
+        stack.elements.add(requireNonNull(
+              element, "Attempted to add null element to stack"));
+        return stack;
+    }
+
+    /**
+     * @return the top element on the stack,
+     * {@code null} if the stack is empty
+     */
+    public @Nullable E peek() {
+        return elements.get(elements.size() - 1);
+    }
+
+    /**
+     * @return a new stack containing all but the top element
+     *
+     * @throws IllegalStateException if the stack is empty
+     */
+    public @Nonnull Stack&lt;E&gt; pop() {
+        if (this.elements.isEmpty())
+            throw new IllegalStateException("Tried to pop and empty stack");
+    
+        var stack = new Stack&lt;E&gt;();
+        stack.elements = new ArrayList&lt;&gt;(this.elements);
+        stack.elements.remove(elements.size() - 1);
+        return stack;
+    }
+
+    @Override
+    public String toString() {
+        return "Stack{" +
+              "elements=" + elements +
+              '}';
+    }
+
+    public static void main(String[] args) {
+        var stack = Stack.&lt;String&gt;empty()
+                         .push("Hello")
+                         .push("World");
+
+        System.out.println(stack.peek()); // =&gt; World
+        System.out.println(stack.pop());  // =&gt; Stack{elements=[Hello]}
+    }
+}
+</code></pre><p>What should the tests for this class look like?</p><h3 id="testing-the-api">Testing the API</h3><p>Earlier in my career, I had absorbed from various sources the notion that
+"unit testing" was about testing the smallest units, namely methods, in isolation.
+Essentially, this meant that tests should have a one-to-one
+(or one-to-many for dealing with corner cases)
+relationship with the public API of the subject under test.
+Let's start there and see what the skeletal structure of the tests looks like:</p><pre><code class="java">import org.junit.Test;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
+
+public class StackTests {
+
+    @Test
+    public void testPush() {
+        // ...
+    }
+    
+    @Test
+    public void testPeek() {
+        // ...
+    }
+    
+    @Test
+    public void testPop() {
+        // ...
+    }
+}
+</code></pre><p>Seems sane so far. Let's start filling in the tests, starting with <code>testPush</code>.
+We'll follow the classic Arrange-Act-Assert
+(or Given-When-Then for BDD folks)
+pattern so that our tests are easy to follow and work as nice, self-contained examples of usage:</p><pre><code class="java">@Test
+public void testPush() {
+    // Arrange
+    var stack = Stack&lt;String&gt;.empty();
+    
+    // Act
+    var updatedStack = stack.push("Hello").push("World");
+    
+    // Assert
+    // Hmmm... how do we assert push worked?
+}
+</code></pre><p>How do we assert the correct state of the stack here?
+We need some way to inspect the stack and see that it contains the elements that we just pushed.
+Rigid adherence to the idea of isolating tests to a single public method is already getting us in trouble:
+unless we do some bizarre reflection voodoo, we need to <code>peek</code> or <code>toString</code> our stack
+in order to see what it contains.
+Let's use <code>peek</code>:</p><pre><code class="java">@Test
+public void testPush() {
+    var stack = Stack&lt;String&gt;.empty();
+    
+    var updatedStack = stack.push("Hello").push("World");
+    
+    assertThat(updatedStack.peek(), is("World"));
+}
+</code></pre><p>Alright, that was a little unsettling, but let's move on and see if we can better isolate our other tests.
+Next up, <code>peek</code>:</p><pre><code class="java">@Test
+public void testPeek() {
+    // Arrange
+    var stack = Stack&lt;String&gt;.empty();
+    // Hmmm... how do we get the stack in the right state?
+    
+    // Act
+    var topElement = stack.peek();
+    
+    // Assert
+    assertThat(topElement, is("Hello"));
+}
+</code></pre><p>We've got a similar problem as before:
+we want to test <code>peek</code> in isolation, but how do we get elements on to the stack in the first place?
+We have a few options:</p><ul><li>Reflection voodoo to change the internals of our stack</li><li>An alternative constructor that takes an existing collection and adds all its elements to the stack</li><li>Call <code>push</code> to add elements to the stack</li></ul><p>Let's first consider the alternative constructor.
+This would definitely work, but it brings along a whole design activity
+and changes the surface area of our API;
+we have to answer the question: in what order do the elements of the supplied collection appear on the stack?
+Worse, we're now considering an API change specifically because of testing.
+Yes, test code should be treated as client code, but in this case,
+it's not strictly necessary to have this alternative constructor.
+DHH has referred to this idea as <a href="https://martinfowler.com/articles/is-tdd-dead/">test-induced design damage</a>:
+the notion that dogmatically following certain testing practices can lead away from the API you <em>want</em>
+and toward an API that's "easy to test".</p><p>Let's avoid changing our API, and instead use <code>push</code> to get our stack in the right state:</p><pre><code class="java">@Test
+public void testPeek() {
+    var stack = Stack&lt;String&gt;.empty().push("Hello");
+    
+    var topElement = stack.peek();
+    
+    assertThat(topElement, is("Hello"));
+}
+</code></pre><p>Notice anything interesting? This is essentially the exact same test we already wrote for <code>testPush</code>!
+Notice also that if we were writing the tests before the implementation, we'd be in the same boat.
+So is the problem testing or TDD?
+No, the problem, like many problems in software development, is <strong>framing</strong>.</p><h3 id="testing-behaviour">Testing Behaviour</h3><p>Let's take a step back and consider what it is we're trying to accomplish by testing.
+"Testing" is probably one of the worst named concepts in our industry<sup id="fnref-1"><a class="footnote-ref" href="#fn-1">1</a></sup>
+because it covers so much more than just proving correctness.
+Tests can:</p><ul><li>Help you explore and learn about the problem space or solution space</li><li>Design your system's components and APIs</li><li>Verify and validate assumptions, both technical and business</li><li>Protect against regression from future changes</li><li>Act as documentation for future developers</li></ul><p>Through this lens, we see that tests fall into two broad categories:</p><ul><li>Tests that aid in development, but you can throw away later; and</li><li>Tests that you keep and run regularly</li></ul><p>Here, we're particularly interested in the ones that we keep.
+If these tests are sticking around long-term, then we want to make sure they
+<strong>clearly communicate what the subject under test should do</strong>.
+Moreover, they should be focussed on intended <em>behaviour</em> rather than mechanism.
+This makes the tests less brittle and aligns them well with the goals of
+design aid, validator, and documentation.</p><p>What does that look like?</p><p>As a simple mnemonic, I like to start all my test names with <code>should</code>.
+For example, we would say "a stack should..." and write the tests that fill in the blanks.
+This reminds me to frame my tests around the desired behaviour of the subject under test
+rather than mechanically writing a test for each public method.
+An interesting side effect of framing things this way is that
+it moves away from the very rigid "unit means method" notion we started with earlier.
+Kent Beck himself has been intentionally vague on what exactly a "unit" is,
+and I think this is the reason: a testable unit is very much dependent on context.
+Here, the unit is arguably the stack, not its individual methods.</p><pre><code class="java">import org.junit.Test;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.is;
+
+public class StackTests {
+
+    @Test
+    public void shouldPeekTheLastItemAdded() {
+        var stack = Stack.&lt;String&gt;empty()
+                         .push("Hello")
+                         .push("World");
+
+        assertThat(stack.peek(), is("World"));
+    }
+
+    @Test
+    public void shouldReturnANewStackLessTheTopItemWhenPopped() {
+        var stack = Stack.&lt;String&gt;empty()
+                         .push("Hello")
+                         .push("World");
+
+        var poppedStack = stack.pop();
+
+        assertThat(poppedStack.peek(), is("Hello"));
+    }
+}
+</code></pre><p>Together, these two tests cover <code>peek</code>, <code>push</code>, and <code>pop</code>.
+More importantly, they do it in a way that clearly documents the intended behaviour of the stack,
+and surfaces the interconnections between the API methods
+(arguably, we only really need the second scenario since it covers all three methods,
+but I find the added clarity of documented behaviour worth the functional overlap).</p><h3 id="squashing-bugs">Squashing Bugs</h3><p>So far, so good. But what happens if we <code>peek</code> an empty stack?</p><pre><code class="java">Stack.&lt;String&gt;empty().peek();
+// Exception in thread "main" java.lang.IndexOutOfBoundsException:
+//   Index -1 out of bounds for length 0
+</code></pre><p>Oops. While the signature of <code>peek</code> promises a <code>null</code> return when the stack is empty,
+the implementation forgets to deal with that case and blows up.</p><p>Let's imagine that our stack was released out into the wild,
+and we learned about this problem via a bug report.
+A good approach to fixing bugs is to try and reproduce the bug with a (failing) test,
+and then fix the problem and see that all tests pass.
+What should the test look like?</p><p>The following may sound silly in this particular example,
+but I've encountered situations in the past where developers have captured
+the reported problem one-to-one with a test
+and written something like this:</p><pre><code class="java">@Test
+public void shouldNotThrowIndexOutOfBoundsWhenPeekingAnEmptyStack() {
+    var stack = Stack.empty();
+    
+    // If this errors, the test fails
+    stack.peek();
+}
+</code></pre><p>Technically, this is true: our stack certainly <em>should not</em> throw an exception in this situation.
+This isn't particularly useful though, because there are a lot of things our stack <em>should not</em> do when we <code>peek</code>.
+That's not to say that negative tests are useless:
+there are situations where you genuinely do need to test something does not happen in order to prove correctness.
+For example, a listener <em>should not</em> be notified if an update did not change the value.
+However, this isn't one of those cases, and so we should focus instead on what the stack <em>should</em> do:</p><pre><code class="java">@Test
+public void shouldReturnNullWhenPeekingAnEmptyStack() {
+    var stack = Stack.&lt;String&gt;empty();
+
+    assertThat(stack.peek(), is(nullValue()));
+}
+</code></pre><p>With this test in place, we can easily fix out problem:</p><pre><code class="java">/**
+ * @return the top element on the stack,
+ * {@code null} if the stack is empty
+ */
+public @Nullable E peek() {
+    return elements.isEmpty() ?
+           null :
+           elements.get(elements.size() - 1);
+}
+</code></pre><p>For completeness, we should also cover the case of calling <code>pop</code> on an empty stack.
+Again, we frame this in terms of <strong>expected behaviour</strong>:</p><pre><code class="java">@Test(expected = IllegalStateException.class)
+public void shouldThrowIllegalStateExceptionWhenPoppingAnEmptyStack() {
+    Stack.empty().pop();
+}
+</code></pre><h2 id="designing-for-testability">Designing for Testability</h2><p>Next, let's explore how to design for testability with a <a href="https://en.wikipedia.org/wiki/Pomodoro_Technique">Pomodoro</a> timer.
+In its initial state, the application couples GUI code with logic, making it difficult to write automated tests.
+Of course, we could write tests entirely from the outside that interact with the application through its GUI,
+but these kinds of tests are exceptionally slow.
+If we aim for exhaustive coverage of our application using such tests,
+we eat up a lot of CPU cycles and discourage frequently running tests in the development environment
+(it's hard to get work done when your keyboard and mouse are hijacked by your running tests).</p><p>I omit some of the code here because there's a little too much to include in this post.
+All the code is checked in on GitHub, however, so you can browse the
+<a href="https://github.com/jbullers/refactoring/blob/master/src/main/java/testing/PomodoroTimer.java">starting</a> and
+<a href="https://github.com/jbullers/refactoring/blob/testable-pomodoro/src/main/java/testing/PomodoroTimer.java">refactored</a> code there
+(I've tried to keep the commits bite-sized and descriptive as well).
+We'll focus here on the most interesting parts:</p><pre><code class="java">public class PomodoroTimer extends JPanel {
+
+    /* ... */
+    
+    private final Timer timer = new Timer(1000, this::countdownTimer);
+
+    PomodoroTimer(Duration workDuration, Duration longBreakDuration, Duration shortBreakDuration) {
+        this.workDuration = workDuration;
+        this.longBreakDuration = longBreakDuration;
+        this.shortBreakDuration = shortBreakDuration;
+        currentDuration = workDuration;
+
+        setLayout(new BorderLayout());
+        add(pomodorosPanel(), BorderLayout.PAGE_START);
+        add(timerPanel(), BorderLayout.CENTER);
+        add(startButton(), BorderLayout.PAGE_END);
+    }
+
+    /* ... */
+    
+    JButton startButton() {
+        startButton.addActionListener(evt -&gt; toggleTimer());
+        return startButton;
+    }
+    
+    void toggleTimer() {
+        if (timer.isRunning()) {
+            timer.stop();
+            startButton.setText("Start");
+        } else {
+            timer.start();
+            startButton.setText("Stop");
+        }
+    }
+
+    void countdownTimer(ActionEvent e) {
+        currentDuration = currentDuration.minus(1, ChronoUnit.SECONDS);
+        if (currentDuration.isZero()) {
+            toggleTimer();
+
+            if (session == Session.WORK) {
+                pomodorosCompleted++;
+                setPomodorosLabel();
+
+                if (pomodorosCompleted == MAX_WORK_POMODOROS) {
+                    session = Session.LONG_BREAK;
+                    currentDuration = longBreakDuration;
+                } else {
+                    session = Session.SHORT_BREAK;
+                    currentDuration = shortBreakDuration;
+                }
+            } else if (session == Session.LONG_BREAK) {
+                pomodorosCompleted = 0;
+                setPomodorosLabel();
+                session = Session.WORK;
+                currentDuration = workDuration;
+            } else if (session == Session.SHORT_BREAK) {
+                session = Session.WORK;
+                currentDuration = workDuration;
+            }
+
+            setSessionLabel();
+        }
+        setTimerLabel();
+    }
+
+    static void createAndShowGui() {
+        var frame = new JFrame("Pomodoro");
+        frame.setContentPane(new PomodoroTimer(Duration.of(10, ChronoUnit.SECONDS),
+                                               Duration.of(5, ChronoUnit.SECONDS),
+                                               Duration.of(3, ChronoUnit.SECONDS)));
+        frame.pack();
+        frame.setVisible(true);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(PomodoroTimer::createAndShowGui);
+    }
+}
+</code></pre><p>The entire application is a <code>JPanel</code> subclass called <code>PomodoroTimer</code>.
+The panel is constructed with the desired session durations and placed in a <code>JFrame</code>.
+The omitted code is responsible either for creating the various Swing components,
+or setting their text to reflect the current state of the application.
+Here's what the application looks like:</p><p><img src="../img/pomodoro.png" alt="A Pomodoro timer application with two completed work sessions" /></p><h3 id="do-i-need-to">Do I Need To?</h3><p>Before we jump into taking the code apart to make it more testable,
+let's first discuss why and when we would want to bother doing that in the first place.
+If you've programmed for longer than five minutes, you've probably heard "it depends" a million times.
+That's exactly what I'm telling you here too, but hopefully with some useful heuristics.
+Note the following is hardly an exhaustive list;
+rather, it captures the typical situations I've experienced in my career where
+I've either benefited from having good automated test coverage,
+or found myself, in hindsight, wasting time and effort on tests that proved effectively useless.</p><h4 id="prototyping">Prototyping</h4><p>One circumstance that I've found fairly common is the need to prototype a solution.
+This can come in the form of a "spike" (experimenting and learning to improve estimation),
+or during active development where you're interested in stakeholder feedback before you commit to a course of action.
+In both of these cases, designing for testability and writing tests can often be a time sink:
+if you aren't sure where exactly you're going with the design,
+you're going to spend an inordinate amount of time fighting to keep your tests compiling.
+You may well choose to write tests in these scenarios because they help you work through the problem.
+That's perfectly fine to do, as long as you don't get too attached.
+Any tests you write while prototyping should be considered throwaway, just like the code itself.
+Don't fall into the trap that because the prototype has test coverage, it's shippable.
+If that's the case, you were never really prototyping in the first place,
+and it's likely a safe bet the spike went way past its intended time box.</p><h4 id="one-and-done">One And Done</h4><p>In a similar vein to prototyping, there are situations where you know,
+with some reasonable probability, that what you are building is a one and done.
+This isn't software you need to add features to, or maintain with any regularity;
+think simple scripts or tools that have a very narrow scope and feature set.
+As with prototyping, you may very well benefit from writing some tests to aid development,
+but don't get caught up in full coverage or
+gold plating your design so that all the pieces are testable in isolation.
+Often, programs in this category can be tested manually to ensure they do what you think they do.
+Remember: code that never changes won't spontaneously develop new bugs, so a comprehensive regression suite is low value.</p><h4 id="building-the-toolkit">Building the Toolkit</h4><p>One exception to the above situations where I would strongly encourage testing is to build up your, or your team's, toolkit.
+There's an obvious caveat here:
+the time spent on designing for testability and writing tests isn't urgently needed to do something else.
+Consider a situation where we haven't had exposure to testing particularly tricky parts of a code base.
+It may be beneficial to write some tests, even if they're low value in and of themselves;
+we derive value from overcoming the challenge of writing them.
+Another common situation is where we haven't used certain test libraries or tools long enough or in enough depth
+to build familiarity with their features or usage patterns.
+Writing tests, or finding ways to make tricky code testable, becomes valuable for the practice and learning that comes from it.
+The more we have in our toolkit, the better equipped we are to write the tests that truly matter.</p><h4 id="continued-development">Continued Development</h4><p>The clear winner for designing for testability is any software that needs to evolve over time.
+As features are added, any sort of manual testing becomes more time-consuming, more complicated, and less likely to be thorough.
+Skipping out on good automated test coverage is likely to become a liability,
+but that alone is not an argument for designing for testability:
+we could write tests that treat the entire application as a black box.
+What we lose testing at that level is fast feedback and
+the confidence that some new piece of code we just wrote does what we think it does.
+A phrase I've heard used in the past is that high-level behavioural tests help you prove the software "does the right thing",
+while lower-level tests help you prove the software "does the thing right".
+Consider the stack data structure from earlier in this post.
+If it were a part of a larger program, we could opt to test it implicitly by testing the program itself at a high level,
+or we could test the stack itself with lower-level tests.
+Both would get us coverage, but the latter provides us with fast tests that can run various permutations and
+give us confidence that at least that piece of code works as we think it should.</p><h3 id="a-better-design">A Better Design</h3><p>Assuming you've determined that you do, in fact, need to get this application under (fast and automated) test,
+here's one possible approach to a testable design.
+I'll go step by step, and as mentioned earlier, only show the most relevant pieces of code here.
+Note that some of these transformations may be a bit risky,
+and so making these changes without any tests in place could introduce bugs.
+For a small application like this,
+it's easy enough to run it regularly to make sure everything still works.
+For larger applications, there may be value in covering at least the most important flows
+with high-level feature tests (e.g. GUI tests).
+Whether you keep such tests once you're done or use them as a safety net depends on
+how useful they are as a regression test suite
+and how much coverage they add beyond what you're able to do with faster tests.</p><p>We'll start our transformation by extracting a <code>PomodoroModel</code> class from <code>PomodoroTimer</code>:</p><pre><code class="java">class PomodoroModel {
+
+    /* ... */
+
+    PomodoroModel(Duration workDuration, Duration longBreakDuration, Duration shortBreakDuration) {
+        this.workDuration = workDuration;
+        this.longBreakDuration = longBreakDuration;
+        this.shortBreakDuration = shortBreakDuration;
+        currentDuration = workDuration;
+    }
+
+    int pomodorosCompleted() {
+        return pomodorosCompleted;
+    }
+    
+    Session session() {
+        return session;
+    }
+    
+    Duration currentDuration() {
+        return currentDuration;
+    }
+
+    void tick(Runnable onZeroDuration) {
+        currentDuration = currentDuration.minus(1, ChronoUnit.SECONDS);
+        if (currentDuration.isZero()) {
+            onZeroDuration.run();
+            if (session == Session.WORK) {
+                pomodorosCompleted = pomodorosCompleted + 1;
+
+                if (pomodorosCompleted == MAX_WORK_POMODOROS) {
+                    session = Session.LONG_BREAK;
+                    currentDuration = longBreakDuration;
+                } else {
+                    session = Session.SHORT_BREAK;
+                    currentDuration = shortBreakDuration;
+                }
+            } else if (session == Session.LONG_BREAK) {
+                pomodorosCompleted = 0;
+                session = Session.WORK;
+                currentDuration = workDuration;
+            } else if (session == Session.SHORT_BREAK) {
+                session = Session.WORK;
+                currentDuration = workDuration;
+            }
+        }
+    }
+}
+
+
+public class PomodoroTimer extends JPanel {
+
+    /* ... */
+    
+    private final Timer timer = new Timer(1000, this::countdownTimer);
+
+    PomodoroTimer(PomodoroModel model) {
+        this.model = model;
+
+        setLayout(new BorderLayout());
+        add(pomodorosPanel(), BorderLayout.PAGE_START);
+        add(timerPanel(), BorderLayout.CENTER);
+        add(startButton(), BorderLayout.PAGE_END);
+    }
+
+    /* ... */
+    
+    JButton startButton() {
+        startButton.addActionListener(evt -&gt; toggleTimer());
+        return startButton;
+    }
+    
+    void toggleTimer() {
+        if (timer.isRunning()) {
+            timer.stop();
+            startButton.setText("Start");
+        } else {
+            timer.start();
+            startButton.setText("Stop");
+        }
+    }
+
+    void countdownTimer(ActionEvent e) {
+        model.tick(this::toggleTimer);
+        setPomodorosLabel();
+        setSessionLabel();
+        setTimerLabel();
+    }
+
+    static void createAndShowGui() {
+        var frame = new JFrame("Pomodoro");
+        frame.setContentPane(
+              new PomodoroTimer(
+                    new PomodoroModel(
+                          Duration.of(10, ChronoUnit.SECONDS),
+                          Duration.of(5, ChronoUnit.SECONDS),
+                          Duration.of(3, ChronoUnit.SECONDS))));
+        frame.pack();
+        frame.setVisible(true);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    }
+
+    public static void main(String[] args) {
+        SwingUtilities.invokeLater(PomodoroTimer::createAndShowGui);
+    }
+}
+</code></pre><p>At this point, we've already made our application testable without having to go through the GUI.
+This is because the entirety of the "business rules" are captured in <code>PomodoroModel#tick</code>.
+We can now write tests that create a model, call <code>tick</code>, and inspect the resulting state.
+For example:</p><pre><code class="java">@Test
+public void shouldTransitionToShortBreakAfterCountingDownWorkWhenPomodoroCountIsLessThanMax() {
+    PomodoroModel model = new PomodoroModel(Duration.of(1, SECONDS),
+                                            Duration.ZERO,
+                                            Duration.ZERO);
+    assertThat(model.session(), is(WORK));
+
+    model.tick(() -&gt; {});
+
+    assertThat(model.session(), is(SHORT_BREAK));
+}
+</code></pre><p>However, there are two issues with stopping here:</p><ol><li>There's temporal coupling through the timer:
+the timer fires, which notifies the GUI panel to ask the model to update itself and
+then reach into the model's fields to get updated values.</li><li>There's no way to start or resume the Pomodoro algorithm from a known state.
+This means that any tests we write for verifying something later in the algorithm,
+such as verifying a long break after four completed Pomodoros,
+is somewhat convoluted as it requires the test to run through every state transition from the beginning.</li></ol><p>We'll start by solving the second problem.
+First, we introduce some data structures to bundle together data that travels together.
+We can then construct a <code>PomodoroModel</code> with these data structures:</p><pre><code class="java">class PomodoroModel {
+
+    /* ... */
+
+    record SessionDurations(Duration workDuration,
+                            Duration longBreakDuration,
+                            Duration shortBreakDuration) {}
+
+    record State(int pomodorosCompleted,
+                 Session session,
+                 Duration currentDuration) {}
+                 
+    PomodoroModel(SessionDurations sessionDurations) {
+        this(sessionDurations, new State(0, Session.WORK, sessionDurations.workDuration()));
+    }
+
+    PomodoroModel(SessionDurations sessionDurations, State state) {
+        this.sessionDurations = sessionDurations;
+        this.state = state;
+    }
+    
+    State state() {
+        return state;
+    }
+
+    void tick(Runnable onZeroDuration) {
+        var updatedDuration = state.currentDuration().minus(1, ChronoUnit.SECONDS);
+        if (updatedDuration.isZero()) {
+            onZeroDuration.run();
+            state = switch (state.session()) {
+                case WORK -&gt; {
+                    int updatedPomodoros = state.pomodorosCompleted() + 1;
+                    yield updatedPomodoros == MAX_WORK_POMODOROS ?
+                          new State(updatedPomodoros,
+                                    Session.LONG_BREAK,
+                                    sessionDurations.longBreakDuration()) :
+                          new State(updatedPomodoros,
+                                    Session.SHORT_BREAK,
+                                    sessionDurations.shortBreakDuration());
+                }
+                case SHORT_BREAK -&gt;
+                      new State(state.pomodorosCompleted(),
+                                Session.WORK,
+                                sessionDurations.workDuration());
+                case LONG_BREAK -&gt;
+                      new State(0, Session.WORK, sessionDurations.workDuration());
+            };
+        } else {
+            state = new State(state.pomodorosCompleted(),
+                              state.session(),
+                              updatedDuration);
+        }
+    }
+}
+
+
+class PomodoroTimer extends JPanel {
+
+    /* ... */
+
+    static void createAndShowGui() {
+        var frame = new JFrame("Pomodoro");
+        frame.setContentPane(
+              new PomodoroTimer(
+                    new PomodoroModel(new SessionDurations(
+                          Duration.of(10, ChronoUnit.SECONDS),
+                          Duration.of(5, ChronoUnit.SECONDS),
+                          Duration.of(3, ChronoUnit.SECONDS)))));
+        frame.pack();
+        frame.setVisible(true);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    }
+    
+    /* ... */
+}
+</code></pre><p>With these changes, we don't have to start every test scenario from the beginning.
+This means that tests such as transitioning from four completed Pomodoro sessions to a long break
+do not require carefully calling <code>tick</code> the right number of times to advance the state.
+We can simply seed the model with the appropriate starting state, call <code>tick</code>, and verify the state transition.</p><pre><code class="java">@Test
+public void shouldTransitionToLongBreakAfterCountingDownWorkWhenPomodoroCountIsMax() {
+    PomodoroModel model = new PomodoroModel(
+          sessionDurations(),
+          new State(3, WORK, Duration.of(1, SECONDS)));
+
+    model.tick(() -&gt; {});
+
+    assertThat(model.state().pomodorosCompleted(), is(4));
+    assertThat(model.state().session(), is(LONG_BREAK));
+}
+</code></pre><p>Finally, we'll tackle the coupling problem by switching to an event-based approach:
+each <code>tick</code> of <code>PomodoroModel</code> will notify a registered listener of the state change.
+The listener, our GUI, can then update itself using the data contained in the event.
+Recall the current flow is:</p><ol><li>The timer fires and notifies the GUI via <code>countdownTimer</code>.</li><li>The GUI tells the model to update via <code>tick</code>.</li><li>The GUI pulls data from the model to set its labels.</li></ol><p>With events, we can instead have a flow where the GUI simply reacts to changes:</p><ol><li>The timer fires and notifies the model to update via <code>tick</code>.</li><li>The model updates itself and fires events to indicate what has changed.</li><li>The GUI sets its labels using the data provided in the events.</li></ol><p>Here's what it looks like:</p><pre><code class="java">class PomodoroModel {
+
+    sealed interface PomodoroEvent {}
+    record SessionStarted(State state) implements PomodoroEvent {}
+    record Tick(Duration duration) implements PomodoroEvent {}
+    record SessionEnded() implements PomodoroEvent {}
+
+    @FunctionalInterface
+    interface PomodoroListener {
+        void stateChanged(PomodoroEvent event);
+    }
+    
+    /* ... */
+    
+    void registerPomodoroListener(PomodoroListener listener) {
+        this.listener = listener;
+        fireEvent(new SessionStarted(state));
+    }
+    
+    void tick() {
+        var updatedDuration = state.currentDuration().minus(1, ChronoUnit.SECONDS);
+        if (updatedDuration.isZero()) {
+            fireEvent(new SessionEnded());
+            state = switch (state.session()) {
+                case WORK -&gt; {
+                    int updatedPomodoros = state.pomodorosCompleted() + 1;
+                    yield updatedPomodoros == MAX_WORK_POMODOROS ?
+                          new State(updatedPomodoros,
+                                    Session.LONG_BREAK,
+                                    sessionDurations.longBreakDuration()) :
+                          new State(updatedPomodoros,
+                                    Session.SHORT_BREAK,
+                                    sessionDurations.shortBreakDuration());
+                }
+                case SHORT_BREAK -&gt;
+                      new State(state.pomodorosCompleted(),
+                                Session.WORK,
+                                sessionDurations.workDuration());
+                case LONG_BREAK -&gt;
+                      new State(0, Session.WORK, sessionDurations.workDuration());
+            };
+            fireEvent(new SessionStarted(state));
+        } else {
+            state = new State(state.pomodorosCompleted(),
+                              state.session(),
+                              updatedDuration);
+            fireEvent(new Tick(updatedDuration));
+        }
+    }
+}
+
+
+class PomodoroTimer extends JPanel {
+
+    /* ... */
+    
+    PomodoroTimer(PomodoroModel model) {
+        timer = new Timer(1000, evt -&gt; model.tick());
+
+        setLayout(new BorderLayout());
+        add(pomodorosPanel(), BorderLayout.PAGE_START);
+        add(timerPanel(), BorderLayout.CENTER);
+        add(startButton(), BorderLayout.PAGE_END);
+
+        model.registerPomodoroListener(event -&gt; {
+            switch (event) {
+                case SessionStarted(State(var pomodorosCompleted, var session, var currentDuration)) -&gt; {
+                    setPomodorosLabel(pomodorosCompleted);
+                    setSessionLabel(session);
+                    setTimerLabel(currentDuration);
+                }
+                case Tick(var duration) -&gt; setTimerLabel(duration);
+                case SessionEnded sessionEnded -&gt; toggleTimer();
+            }
+        });
+    }
+    
+    /* countdownTimer is no longer needed */
+    
+    /* ... */
+}
+</code></pre><p>While this final step doesn't necessarily make the application more "testable" than it was at the previous step,
+it is arguably a better design as we've eliminated remaining points of coupling.
+The model now operates entirely on its own and pushes data out
+rather than occupying this strange middle ground of expecting data to be pulled,
+except for taking an <code>onZeroDuration</code> callback that acts as a sort of push.</p><p>With this final change in place, the above test for transitioning to a long break now looks like this:</p><pre><code class="java">@Test
+public void shouldTransitionToLongBreakAfterCountingDownWorkWhenPomodoroCountIsMax() {
+    PomodoroModel model = new PomodoroModel(
+          withDuration(sessionDurations(), LONG_BREAK, Duration.of(10, SECONDS)),
+          new State(3, WORK, Duration.of(1, SECONDS)));
+    model.registerPomodoroListener(capturingEventListener);
+
+    model.tick();
+
+    assertThat(capturingEventListener.events, contains(List.of(
+          is(equalTo(new SessionStarted(new State(3, WORK, Duration.of(1, SECONDS))))),
+          is(instanceOf(SessionEnded.class)),
+          is(equalTo(new SessionStarted(new State(4, LONG_BREAK, Duration.of(10, SECONDS))))))));
+}
+</code></pre><p>This version of the test is actually more complete than the previous version
+in that it asserts the initial state (first event) along with all state changes
+and all state values.
+As such, it paints a much clearer picture of the algorithm under test.</p><h2 id="final-remarks">Final Remarks</h2><p>There's a lot of material out there about testing and testability,
+but when I think back to things I've learned and reflect on the kinds of tests I've written,
+I can't help but feel that so much of it skips the most important part:
+understanding the tradeoffs and building intuition.
+I hope that the above exploration helps you to improve your testing techniques and
+gives you the confidence to ask whether automated testing is worth the effort in a given circumstance.
+When you do write tests, test around behaviours instead of some artificial and arbitrary "unit" of syntax.
+And spend the time to design for testability when you stand to reap a benefit from the investment;
+there are situations where not spending that time is a net positive.</p><div class="footnotes"><hr /><ol><li id="fn-1"><p>Don't get me started on "sprints".
+The team is supposed to work at a pace that they can sustain indefinitely.
+We have a word for long races at a steady pace, and they're not "sprints."
+Language has a huge impact on framing.</p><a href="#fnref-1" class="footnote-backref">↩</a></li></ol></div>
+</div>
+
+<div id="post-tags">
+    <b>Tags: </b>
+    
+    <a href="/tags/Testing">Testing</a>
+    
+    <a href="/tags/Java">Java</a>
+    
+</div>
+
+
+    <div id="prev-next">
+        
+        
+        <a class="right" href="/posts/2023-09-22-aoc-2022-day7">Experimenting with Clojure: Advent of Code 2022 - Day 7 &raquo;</a>
+        
+    </div>
+
+    
+
+
+</div>
+
+            </div>
+    </div>
+    <footer>Copyright &copy; 2023 Jason Bullers
+        <p style="text-align: center;">Powered by <a href="http://cryogenweb.org">Cryogen</a></p></footer>
+</div>
+<script src="//code.jquery.com/jquery-1.11.0.min.js"></script>
+<script src="//maxcdn.bootstrapcdn.com/bootstrap/3.3.0/js/bootstrap.min.js"></script>
+<script src="/js/highlight.min.js" type="application/javascript"></script>
+<script>hljs.initHighlightingOnLoad();</script>
+
+
+</body>
+</html>
